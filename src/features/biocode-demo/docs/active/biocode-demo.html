@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BioCode Demo (Interactive Fake CLI)</title>
+  <style>
+    /* iTerm-like chrome */
+    :root { --bg:#1e1e1e; --fg:#e5e5e5; --muted:#9aa0a6; --green:#7bd88f; --yellow:#ffd866; --blue:#7aa2f7; --red:#ff616e; }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 Fira Code, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace;}
+    .frame{max-width:1100px;margin:24px auto;border-radius:12px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.35);border:1px solid #2a2a2a}
+    .titlebar{background:#2b2b2b;height:36px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid #1f1f1f}
+    .dot{width:12px;height:12px;border-radius:50%}
+    .dot.red{background:#ff5f57}.dot.yellow{background:#febc2e}.dot.green{background:#28c840}
+    .tabs{margin-left:12px;color:#cfcfcf;font-size:13px;opacity:.85}
+    .term{padding:16px 18px 80px;min-height:60vh;position:relative}
+    .line{white-space:pre-wrap;word-break:break-word}
+    .muted{color:var(--muted)}
+    .ok{color:var(--green)}.warn{color:var(--yellow)}.err{color:var(--red)}.info{color:var(--blue)}
+    .prompt{position:sticky;bottom:0;left:0;right:0;background:linear-gradient(180deg, rgba(30,30,30,0), rgba(30,30,30,1) 30%);padding-top:24px}
+    .row{display:flex;gap:8px;align-items:center}
+    .label{color:#8ab4f8}
+    .path{color:#9cdcfe}
+    .cursor{display:inline-block;width:8px;background:#cfcfcf;margin-left:2px;animation:blink 1s step-start infinite}
+    @keyframes blink{50%{opacity:0}}
+    .input{outline:none;border:none;background:transparent;color:var(--fg);flex:1;min-width:10px}
+    .kbd{color:#c0c0c0;background:#2a2a2a;border:1px solid #3a3a3a;border-radius:4px;padding:2px 6px;font-size:12px}
+    .help{position:absolute;top:44px;right:16px;color:#bdbdbd;font-size:12px}
+    code{color:#d1d1d1}
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="frame">
+    <div class="titlebar">
+      <div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div>
+      <div class="tabs">iTerm — BioCode Demo</div>
+    </div>
+    <div class="term" id="term" aria-live="polite">
+      <div class="help">Type: <span class="kbd">biocode debug sample.bam</span> · <span class="kbd">biocode gen ...</span> · <span class="kbd">biocode explain ...</span> · <span class="kbd">clear</span></div>
+      <!-- Output lines go here -->
+      <div id="log"></div>
+
+      <!-- Prompt -->
+      <div class="prompt">
+        <div class="row">
+          <span class="label" id="promptLabel">macbook</span>:<span class="path">~/biocode-demo</span> $
+          <span id="input" class="input" contenteditable="true" spellcheck="false" aria-label="Terminal input"></span>
+          <span class="cursor" id="cursor"> </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    const log = document.getElementById('log');
+    const input = document.getElementById('input');
+    const term = document.getElementById('term');
+    const promptLabel = document.getElementById('promptLabel');
+    let busy=false, waitingPrompt=null; // {label, accept: fn}
+
+    const scroll = () => term.scrollTop = term.scrollHeight;
+    const add = (txt, cls='line') => { const d=document.createElement('div'); d.className=cls; d.textContent=txt; log.appendChild(d); scroll(); };
+    const addHTML = (html) => { const d=document.createElement('div'); d.className='line'; d.innerHTML=html; log.appendChild(d); scroll(); };
+    const echo = (cmd) => add(`macbook:~/biocode-demo $ ${cmd}`);
+    const sleep = (ms)=> new Promise(r=>setTimeout(r,ms));
+
+    // Simple scripted runner
+    async function runSteps(steps){
+      busy=true;
+      for(const s of steps){
+        if(s.type==='print'){ add(s.text); if(s.delay) await sleep(s.delay); }
+        else if(s.type==='printHTML'){ addHTML(s.html); if(s.delay) await sleep(s.delay); }
+        else if(s.type==='prompt'){
+          waitingPrompt={ label: s.label, accept: s.accept };
+          promptLabel.textContent=s.label; // show question in prompt label
+          const ans = await waitForAnswer();
+          add(`${s.label}: ${ans}`);
+          promptLabel.textContent='macbook';
+          waitingPrompt=null;
+          if(s.onAnswer) await s.onAnswer(ans);
+        }
+      }
+      busy=false;
+    }
+
+    function waitForAnswer(){ return new Promise(resolve=>{ waitingPrompt.resolve=resolve; }); }
+
+    // COMMAND SCRIPTS
+    function scriptDebug(arg){
+      const bam = arg || 'sample.bam';
+      return [
+        {type:'print', text:'[BioCode] Detecting file type…      ok (BAM)', delay:350},
+        {type:'print', text:'[BioCode] Quick sanity checks…      ok (sorted: coordinate)', delay:300},
+        {type:'print', text:'[BioCode] Index presence…           missing (.bai not found)', delay:500},
+        {type:'print', text:'[BioCode] Read summary (fast scan):', delay:50},
+        {type:'print', text:'  - total reads: ~42,317,894'},
+        {type:'print', text:'  - mapped: 97.6%   | properly paired: 95.8%'},
+        {type:'print', text:'  - duplicates: 11.9% (flag-based)'},
+        {type:'print', text:'  - multimappers: 6.3%'},
+        {type:'print', text:'  - median insert size: 286 bp'},
+        {type:'print', text:'  - GC content (reads): 42% | reference: 41%', delay:300},
+        {type:'print', text:'[Issue 1] Missing BAM index'},
+        {type:'print', text:`  Fix: samtools index -@ 8 ${bam}`, delay:200},
+        {type:'print', text:'[Issue 2] Multimapper noise (6.3%) — consider MAPQ >=10 or STAR', delay:300},
+        {type:'print', text:'[Note] GC bias (coarse) — no strong deviation observed', delay:300},
+        {type:'print', text:'[BioCode] Suggested next command:'},
+        {type:'print', text:`  samtools index -@ 8 ${bam} && samtools idxstats ${bam} | head`, delay:300},
+        {type:'prompt', label:'[Decision] Auto-generate fix command? [y/N]', accept:(v)=>/^y(es)?$/i.test(v), onAnswer: async (ans)=>{
+          if(!/^y(es)?$/i.test(ans)){ add('Aborted.'); return; }
+          add(`Running: samtools index -@ 8 ${bam}`); await sleep(900);
+          add('[Index] Done: sample.bam.bai (2.1s)'); await sleep(300);
+          add('Re-checking…'); await sleep(300);
+          add('[BioCode] Index presence…           ok'); await sleep(250);
+          add('[BioCode] Ready for IGV / variant calling.'); await sleep(200);
+          add('Summary');
+          add(`  Root cause: Missing .bai after sort`);
+          add(`  Fix applied: samtools index -@ 8 ${bam}`);
+          add('  Risk notes: multimappers ~6.3%; consider MAPQ filter (>=10)');
+        }}
+      ];
+    }
+
+    function scriptGen(){
+      return [
+        {type:'print', text:'[BioCode] Parsing intent… ok', delay:250},
+        {type:'print', text:'[BioCode] Emitting idempotent Snakemake slice (FASTQ ➜ BAM)', delay:300},
+        {type:'printHTML', html:
+`# Snakefile\nrule all:\n    input: expand("results/bam/{sample}.bam.bai", sample=lambda: config['samples'])\n\nrule align_and_sort:\n    input:\n        r1="data/fastq/{sample}_R1.fastq.gz",\n        r2="data/fastq/{sample}_R2.fastq.gz",\n        ref="refs/hg38.fa"\n    output:\n        bam=temp("results/bam/{sample}.bam"),\n        bai="results/bam/{sample}.bam.bai"\n    params:\n        threads=8,\n        bwa_opts="-R '@RG\\tID:{wildcards.sample}\\tSM:{wildcards.sample}\\tPL:ILLUMINA'"\n    log: "logs/{sample}.align.log"\n    conda: "envs/aln.yaml"\n    shell:\n        r"""\n        set -eo pipefail\n        if [ ! -s {output.bam} ]; then\n          bwa-mem2 mem -t {params.threads} {params.bwa_opts} {input.ref} {input.r1} {input.r2} 2>> {log} \\| samtools view -@ {params.threads} -bS - \\| samtools sort -@ {params.threads} -o {output.bam} - 2>> {log}\n        fi\n        samtools index -@ {params.threads} {output.bam} 2>> {log}\n        """`, delay:200},
+        {type:'printHTML', html:
+`# envs/aln.yaml\nname: biocode-aln\nchannels: [conda-forge, bioconda]\ndependencies:\n  - bwa-mem2=2.*\n  - samtools=1.19.*`, delay:150},
+        {type:'printHTML', html:
+`# config.yaml\nsamples:\n  - sampleA\n  - sampleB`, delay:150},
+        {type:'print', text:'Notes: Replace BWA-MEM2 with STAR for spliced RNA‑seq if preferred.', delay:50},
+        {type:'print', text:'Idempotent: no re-run if outputs exist; index enforced.'}
+      ];
+    }
+
+    function scriptExplain(){
+      return [
+        {type:'print', text:'[BioCode] Goal: translate legacy Perl FASTA reader to Python (Biopython)', delay:250},
+        {type:'printHTML', html:
+`Original (Perl, excerpt):\n------------------------------------------------------------\nopen(my $fh, "<", $ARGV[0]) or die $!;\nmy %seq; my $h = "";\nwhile (my $l = <$fh>) {\n  chomp $l;\n  if ($l =~ /^>(\\S+)/) { $h = $1; $seq{$h} = ""; }\n  else { $seq{$h} .= $l; }\n}\nfor my $k (keys %seq) { print "$k\\t" . length($seq{$k}) . "\\n"; }`, delay:200},
+        {type:'printHTML', html:
+`Refactor (Python 3, Biopython):\n------------------------------------------------------------\nfrom __future__ import annotations\nfrom typing import Dict\nfrom Bio import SeqIO\nfrom pathlib import Path\nimport sys\n\ndef fasta_lengths(path: str | Path) -> Dict[str, int]:\n    records = SeqIO.parse(str(path), "fasta")\n    return {rec.id: len(rec.seq) for rec in records}\n\nif __name__ == "__main__":\n    if len(sys.argv) < 2:\n        sys.exit("usage: python fasta_lengths.py <file.fasta>")\n    lengths = fasta_lengths(sys.argv[1])\n    for k, v in lengths.items():\n        print(f"{k}\\t{v}")`, delay:150},
+        {type:'print', text:'Why safer: Biopython parser; typed; stream-based; easy tests.', delay:100},
+        {type:'print', text:'Next: add friendly error messages; optional TSV output.'}
+      ];
+    }
+
+    // Input handling
+    function sanitize(s){ return s.replace(/\n/g,' ').trim(); }
+    async function handle(cmd){
+      const c = sanitize(cmd);
+      if(!c) return;
+      echo(c);
+      input.textContent='';
+      if(busy){ add('Busy… press Enter after current action.'); return; }
+      // Commands
+      if(c==='clear'){ log.innerHTML=''; return; }
+      if(/^biocode\s+debug/i.test(c)){
+        const m = c.match(/^biocode\s+debug\s+(\S+)/i); const bam = m?m[1]:undefined;
+        await runSteps(scriptDebug(bam)); return;
+      }
+      if(/^biocode\s+gen/i.test(c)){ await runSteps(scriptGen()); return; }
+      if(/^biocode\s+explain/i.test(c)){ await runSteps(scriptExplain()); return; }
+      if(/^(help|-h|--help)$/i.test(c)) { add('Usage: biocode [debug|gen|explain] …  · clear'); return; }
+      add('Command not found. Try "help".');
+    }
+
+    // Key handling (contenteditable)
+    input.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter'){
+        e.preventDefault();
+        const val = input.textContent.trim();
+        if(waitingPrompt){
+          const ans = val || 'n';
+          input.textContent='';
+          waitingPrompt.resolve(ans);
+          return;
+        }
+        handle(val);
+      }
+    });
+    // Click to focus
+    document.addEventListener('click', ()=> input.focus());
+    // Initial hint
+    add('BioCode CLI (demo) — type "help" for commands.');
+    input.focus();
+  })();
+  </script>
+</body>
+</html>
+

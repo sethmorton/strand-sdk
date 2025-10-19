@@ -60,6 +60,7 @@
     const term = document.getElementById('term');
     const promptLabel = document.getElementById('promptLabel');
     let busy=false, waitingPrompt=null; // {label, accept: fn}
+    const DELAY = 1.6; // slow things down a bit for realism
 
     const scroll = () => term.scrollTop = term.scrollHeight;
     const add = (txt, cls='line') => { const d=document.createElement('div'); d.className=cls; d.textContent=txt; log.appendChild(d); scroll(); };
@@ -67,12 +68,28 @@
     const echo = (cmd) => add(`macbook:~/biocode-demo $ ${cmd}`);
     const sleep = (ms)=> new Promise(r=>setTimeout(r,ms));
 
+    // Simple spinner line
+    function spinner(text, duration=1400, doneText){
+      return new Promise(resolve=>{
+        const row=document.createElement('div');
+        row.className='line';
+        const frames=['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+        let i=0;
+        const tick=()=>{ row.textContent=`${text} ${frames[i++%frames.length]}`; };
+        tick();
+        log.appendChild(row); scroll();
+        const iv=setInterval(tick,80);
+        setTimeout(()=>{ clearInterval(iv); row.textContent= doneText || `${text} done`; scroll(); resolve(); }, duration*DELAY);
+      });
+    }
+
     // Simple scripted runner
     async function runSteps(steps){
       busy=true;
       for(const s of steps){
         if(s.type==='print'){ add(s.text); if(s.delay) await sleep(s.delay); }
         else if(s.type==='printHTML'){ addHTML(s.html); if(s.delay) await sleep(s.delay); }
+        else if(s.type==='spin'){ await spinner(s.text, s.duration, s.doneText); }
         else if(s.type==='prompt'){
           waitingPrompt={ label: s.label, accept: s.accept };
           promptLabel.textContent=s.label; // show question in prompt label
@@ -92,16 +109,21 @@
     function scriptDebug(arg){
       const bam = arg || 'sample.bam';
       return [
-        {type:'print', text:'[BioCode] Detecting file type…      ok (BAM)', delay:350},
-        {type:'print', text:'[BioCode] Quick sanity checks…      ok (sorted: coordinate)', delay:300},
-        {type:'print', text:'[BioCode] Index presence…           missing (.bai not found)', delay:500},
+        {type:'spin', text:'[BioCode] Scanning filesystem (cwd, neighbors)…', duration:1200, doneText:'[BioCode] Scanning filesystem… ok'},
+        {type:'spin', text:`[BioCode] Opening ${bam} (headers, flags)…`, duration:1200, doneText:'[BioCode] Detecting file type…      ok (BAM)'},
+        {type:'print', text:'[BioCode] Quick sanity checks…      ok (sorted: coordinate)', delay:500*DELAY},
+        {type:'print', text:'[BioCode] Index presence…           missing (.bai not found)', delay:700*DELAY},
         {type:'print', text:'[BioCode] Read summary (fast scan):', delay:50},
         {type:'print', text:'  - total reads: ~42,317,894'},
         {type:'print', text:'  - mapped: 97.6%   | properly paired: 95.8%'},
         {type:'print', text:'  - duplicates: 11.9% (flag-based)'},
         {type:'print', text:'  - multimappers: 6.3%'},
         {type:'print', text:'  - median insert size: 286 bp'},
-        {type:'print', text:'  - GC content (reads): 42% | reference: 41%', delay:300},
+        {type:'print', text:'  - GC content (reads): 42% | reference: 41%', delay:400*DELAY},
+        {type:'spin', text:'[Model] Thinking…', duration:1200, doneText:'[Model] Reasoning complete'},
+        {type:'print', text:'[Model] Hypothesis: BAM is sorted; missing sidecar index (.bai).', delay:450*DELAY},
+        {type:'print', text:'[Model] Evidence: SO:coordinate in header; .bai absent; typical idxstats/IGV failure.', delay:300*DELAY},
+        {type:'print', text:'[Model] Plan: propose samtools index; re-check; warn on multimappers/GC.', delay:300*DELAY},
         {type:'print', text:'[Issue 1] Missing BAM index'},
         {type:'print', text:`  Fix: samtools index -@ 8 ${bam}`, delay:200},
         {type:'print', text:'[Issue 2] Multimapper noise (6.3%) — consider MAPQ >=10 or STAR', delay:300},
@@ -110,10 +132,10 @@
         {type:'print', text:`  samtools index -@ 8 ${bam} && samtools idxstats ${bam} | head`, delay:300},
         {type:'prompt', label:'[Decision] Auto-generate fix command? [y/N]', accept:(v)=>/^y(es)?$/i.test(v), onAnswer: async (ans)=>{
           if(!/^y(es)?$/i.test(ans)){ add('Aborted.'); return; }
-          add(`Running: samtools index -@ 8 ${bam}`); await sleep(900);
-          add('[Index] Done: sample.bam.bai (2.1s)'); await sleep(300);
-          add('Re-checking…'); await sleep(300);
-          add('[BioCode] Index presence…           ok'); await sleep(250);
+          add(`Running: samtools index -@ 8 ${bam}`); await spinner('  writing index…', 1500, '  writing index… done');
+          add('[Index] Done: sample.bam.bai (2.1s)'); await sleep(350*DELAY);
+          add('Re-checking…'); await spinner('[BioCode] Loading index…', 900, '[BioCode] Loading index… ok');
+          add('[BioCode] Index presence…           ok'); await sleep(300*DELAY);
           add('[BioCode] Ready for IGV / variant calling.'); await sleep(200);
           add('Summary');
           add(`  Root cause: Missing .bai after sort`);
@@ -125,27 +147,34 @@
 
     function scriptGen(){
       return [
-        {type:'print', text:'[BioCode] Parsing intent… ok', delay:250},
-        {type:'print', text:'[BioCode] Emitting idempotent Snakemake slice (FASTQ ➜ BAM)', delay:300},
+        {type:'spin', text:'[BioCode] Parsing intent…', duration:900, doneText:'[BioCode] Parsing intent… ok'},
+        {type:'print', text:'[Model] Reasoning: paired-end RNA‑seq; hg38; prefer bwa-mem2 for demo speed.', delay:450*DELAY},
+        {type:'print', text:'[Model] Plan: emit minimal idempotent slice + environment pins.', delay:350*DELAY},
+        {type:'spin', text:'[BioCode] Resolving toolchain (bwa-mem2, samtools)…', duration:1100, doneText:'[BioCode] Toolchain… ok'},
+        {type:'print', text:'[BioCode] Emitting idempotent Snakemake slice (FASTQ ➜ BAM)', delay:350*DELAY},
         {type:'printHTML', html:
 `# Snakefile\nrule all:\n    input: expand("results/bam/{sample}.bam.bai", sample=lambda: config['samples'])\n\nrule align_and_sort:\n    input:\n        r1="data/fastq/{sample}_R1.fastq.gz",\n        r2="data/fastq/{sample}_R2.fastq.gz",\n        ref="refs/hg38.fa"\n    output:\n        bam=temp("results/bam/{sample}.bam"),\n        bai="results/bam/{sample}.bam.bai"\n    params:\n        threads=8,\n        bwa_opts="-R '@RG\\tID:{wildcards.sample}\\tSM:{wildcards.sample}\\tPL:ILLUMINA'"\n    log: "logs/{sample}.align.log"\n    conda: "envs/aln.yaml"\n    shell:\n        r"""\n        set -eo pipefail\n        if [ ! -s {output.bam} ]; then\n          bwa-mem2 mem -t {params.threads} {params.bwa_opts} {input.ref} {input.r1} {input.r2} 2>> {log} \\| samtools view -@ {params.threads} -bS - \\| samtools sort -@ {params.threads} -o {output.bam} - 2>> {log}\n        fi\n        samtools index -@ {params.threads} {output.bam} 2>> {log}\n        """`, delay:200},
         {type:'printHTML', html:
 `# envs/aln.yaml\nname: biocode-aln\nchannels: [conda-forge, bioconda]\ndependencies:\n  - bwa-mem2=2.*\n  - samtools=1.19.*`, delay:150},
         {type:'printHTML', html:
 `# config.yaml\nsamples:\n  - sampleA\n  - sampleB`, delay:150},
-        {type:'print', text:'Notes: Replace BWA-MEM2 with STAR for spliced RNA‑seq if preferred.', delay:50},
+        {type:'print', text:'[BioCode] Files written: Snakefile, envs/aln.yaml, config.yaml (virtual).', delay:200*DELAY},
+        {type:'print', text:'Notes: Replace BWA-MEM2 with STAR for spliced RNA‑seq if preferred.', delay:80},
         {type:'print', text:'Idempotent: no re-run if outputs exist; index enforced.'}
       ];
     }
 
     function scriptExplain(){
       return [
-        {type:'print', text:'[BioCode] Goal: translate legacy Perl FASTA reader to Python (Biopython)', delay:250},
+        {type:'spin', text:'[BioCode] Loading file: legacy/fasta_parser.pl…', duration:900, doneText:'[BioCode] File loaded'},
+        {type:'print', text:'[BioCode] Goal: translate legacy Perl FASTA reader to Python (Biopython)', delay:300*DELAY},
+        {type:'print', text:'[Model] Reasoning: map Perl loop/regex to Biopython SeqIO; keep behavior.', delay:350*DELAY},
+        {type:'print', text:'[Model] Plan: emit typed function + CLI main; stream records.', delay:300*DELAY},
         {type:'printHTML', html:
 `Original (Perl, excerpt):\n------------------------------------------------------------\nopen(my $fh, "<", $ARGV[0]) or die $!;\nmy %seq; my $h = "";\nwhile (my $l = <$fh>) {\n  chomp $l;\n  if ($l =~ /^>(\\S+)/) { $h = $1; $seq{$h} = ""; }\n  else { $seq{$h} .= $l; }\n}\nfor my $k (keys %seq) { print "$k\\t" . length($seq{$k}) . "\\n"; }`, delay:200},
         {type:'printHTML', html:
 `Refactor (Python 3, Biopython):\n------------------------------------------------------------\nfrom __future__ import annotations\nfrom typing import Dict\nfrom Bio import SeqIO\nfrom pathlib import Path\nimport sys\n\ndef fasta_lengths(path: str | Path) -> Dict[str, int]:\n    records = SeqIO.parse(str(path), "fasta")\n    return {rec.id: len(rec.seq) for rec in records}\n\nif __name__ == "__main__":\n    if len(sys.argv) < 2:\n        sys.exit("usage: python fasta_lengths.py <file.fasta>")\n    lengths = fasta_lengths(sys.argv[1])\n    for k, v in lengths.items():\n        print(f"{k}\\t{v}")`, delay:150},
-        {type:'print', text:'Why safer: Biopython parser; typed; stream-based; easy tests.', delay:100},
+        {type:'print', text:'Why safer: Biopython parser; typed; stream-based; easy tests.', delay:120},
         {type:'print', text:'Next: add friendly error messages; optional TSV output.'}
       ];
     }

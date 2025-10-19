@@ -166,15 +166,35 @@
 
     function scriptExplain(){
       return [
+        {type:'spin', text:'[GeneLoop] Reading file: legacy/fasta_parser.pl…', duration:900, doneText:'[GeneLoop] File read'},
+        {type:'print', text:'[Explain] Summary', delay:250*DELAY},
+        {type:'print', text:'  - Purpose: parse FASTA records and print id\tlength TSV.'},
+        {type:'print', text:'  - Flow: detect headers (">id"), accumulate sequence lines per id, output lengths.'},
+        {type:'print', text:'[Explain] Assumptions'},
+        {type:'print', text:'  - Header regex: /^(\\S+)/ captures ID without spaces.'},
+        {type:'print', text:'  - Multiline sequences supported; blank lines ignored.'},
+        {type:'print', text:'[Explain] Pitfalls'},
+        {type:'print', text:'  - Memory growth: stores entire sequences in a hash (large FASTA → high RAM).'},
+        {type:'print', text:'  - Malformed/missing headers collapse into empty key; no warnings.'},
+        {type:'print', text:'[Explain] Edge cases'},
+        {type:'print', text:'  - Headers with spaces truncated at first whitespace.'},
+        {type:'print', text:'  - Non-FASTA lines are concatenated silently.'},
+        {type:'print', text:'[Explain] Next steps'},
+        {type:'print', text:'  - Add input validation + friendly errors.'},
+        {type:'print', text:'  - Add tests: empty file, multiline, odd headers. Consider streaming parser.'}
+      ];
+    }
+
+    function scriptRefactor(){
+      return [
         {type:'spin', text:'[GeneLoop] Loading file: legacy/fasta_parser.pl…', duration:900, doneText:'[GeneLoop] File loaded'},
-        {type:'print', text:'[GeneLoop] Goal: translate legacy Perl FASTA reader to Python (Biopython)', delay:300*DELAY},
-        {type:'print', text:'[Model] Reasoning: map Perl loop/regex to Biopython SeqIO; keep behavior.', delay:350*DELAY},
-        {type:'print', text:'[Model] Plan: emit typed function + CLI main; stream records.', delay:300*DELAY},
+        {type:'print', text:'[Model] Goal: refactor to Python (Biopython) with same behavior.', delay:300*DELAY},
+        {type:'print', text:'[Model] Plan: typed function + CLI main; stream records via SeqIO.', delay:280*DELAY},
         {type:'printHTML', html:
-`Original (Perl, excerpt):\n------------------------------------------------------------\nopen(my $fh, "<", $ARGV[0]) or die $!;\nmy %seq; my $h = "";\nwhile (my $l = <$fh>) {\n  chomp $l;\n  if ($l =~ /^>(\\S+)/) { $h = $1; $seq{$h} = ""; }\n  else { $seq{$h} .= $l; }\n}\nfor my $k (keys %seq) { print "$k\\t" . length($seq{$k}) . "\\n"; }`, delay:200},
+`Original (Perl, excerpt):\n------------------------------------------------------------\nopen(my $fh, "<", $ARGV[0]) or die $!;\nmy %seq; my $h = "";\nwhile (my $l = <$fh>) {\n  chomp $l;\n  if ($l =~ /^>(\\S+)/) { $h = $1; $seq{$h} = ""; }\n  else { $seq{$h} .= $l; }\n}\nfor my $k (keys %seq) { print "$k\\t" . length($seq{$k}) . "\\n"; }`, delay:220},
         {type:'printHTML', html:
-`Refactor (Python 3, Biopython):\n------------------------------------------------------------\nfrom __future__ import annotations\nfrom typing import Dict\nfrom Bio import SeqIO\nfrom pathlib import Path\nimport sys\n\ndef fasta_lengths(path: str | Path) -> Dict[str, int]:\n    records = SeqIO.parse(str(path), "fasta")\n    return {rec.id: len(rec.seq) for rec in records}\n\nif __name__ == "__main__":\n    if len(sys.argv) < 2:\n        sys.exit("usage: python fasta_lengths.py <file.fasta>")\n    lengths = fasta_lengths(sys.argv[1])\n    for k, v in lengths.items():\n        print(f"{k}\\t{v}")`, delay:150},
-        {type:'print', text:'Why safer: Biopython parser; typed; stream-based; easy tests.', delay:120},
+`Refactor (Python 3, Biopython):\n------------------------------------------------------------\nfrom __future__ import annotations\nfrom typing import Dict\nfrom Bio import SeqIO\nfrom pathlib import Path\nimport sys\n\ndef fasta_lengths(path: str | Path) -> Dict[str, int]:\n    records = SeqIO.parse(str(path), "fasta")\n    return {rec.id: len(rec.seq) for rec in records}\n\nif __name__ == "__main__":\n    if len(sys.argv) < 2:\n        sys.exit("usage: python fasta_lengths.py <file.fasta>")\n    lengths = fasta_lengths(sys.argv[1])\n    for k, v in lengths.items():\n        print(f"{k}\\t{v}")`, delay:180},
+        {type:'print', text:'Why safer: Biopython parser; typed; stream-based; easy tests.', delay:140},
         {type:'print', text:'Next: add friendly error messages; optional TSV output.'}
       ];
     }
@@ -197,7 +217,8 @@
         add('Commands:');
         add('  debug <bam>              Diagnose common BAM issues; suggest fixes.');
         add('  gen "<goal>"             Generate idempotent Snakemake slice.');
-        add('  explain <file> [--target=python] [--library=biopython]');
+        add('  explain <file>           Summarize behavior, assumptions, pitfalls.');
+        add('  refactor <file> [--target=python] [--library=biopython]');
         add('');
         add('Flags:');
         add('  -h, --help               Show this help.');
@@ -205,15 +226,17 @@
         add('Examples:');
         add('  geneloop debug sample.bam');
         add('  geneloop gen "FASTQ to BAM: paired-end RNA-seq; hg38"');
-        add('  geneloop explain legacy/fasta_parser.pl --target=python --library=biopython');
+        add('  geneloop explain legacy/fasta_parser.pl');
+        add('  geneloop refactor legacy/fasta_parser.pl --target=python --library=biopython');
         return;
       }
       if(/^geneloop\s+debug/i.test(c)){
-        const m = c.match(/^biocode\s+debug\s+(\S+)/i); const bam = m?m[1]:undefined;
+        const m = c.match(/^geneloop\s+debug\s+(\S+)/i); const bam = m?m[1]:undefined;
         await runSteps(scriptDebug(bam)); return;
       }
       if(/^geneloop\s+gen/i.test(c)){ await runSteps(scriptGen()); return; }
       if(/^geneloop\s+explain/i.test(c)){ await runSteps(scriptExplain()); return; }
+      if(/^geneloop\s+refactor/i.test(c)){ await runSteps(scriptRefactor()); return; }
       if(/^(help)$/i.test(c)) { add('Try: geneloop -help'); return; }
       add('Command not found. Try "help".');
     }

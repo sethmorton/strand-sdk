@@ -25,7 +25,7 @@
     @keyframes blink{50%{opacity:0}}
     .input{outline:none;border:none;background:transparent;color:var(--fg);flex:1;min-width:10px}
     .kbd{color:#c0c0c0;background:#2a2a2a;border:1px solid #3a3a3a;border-radius:4px;padding:2px 6px;font-size:12px}
-    .help{position:absolute;top:44px;right:16px;color:#bdbdbd;font-size:12px}
+    /* removed floating help overlay */
     code{color:#d1d1d1}
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,7 +38,7 @@
       <div class="tabs">iTerm — BioCode Demo</div>
     </div>
     <div class="term" id="term" aria-live="polite">
-      <div class="help">Type: <span class="kbd">biocode debug sample.bam</span> · <span class="kbd">biocode gen ...</span> · <span class="kbd">biocode explain ...</span> · <span class="kbd">clear</span></div>
+      <!-- (intentionally no floating examples to keep it realistic) -->
       <!-- Output lines go here -->
       <div id="log"></div>
 
@@ -160,13 +160,32 @@
       if(busy){ add('Busy… press Enter after current action.'); return; }
       // Commands
       if(c==='clear'){ log.innerHTML=''; return; }
+      // biocode help variants
+      if(/^biocode\s+(-h|--help|-help|help)?$/i.test(c)){
+        add('BioCode CLI v0.0.0 (demo)');
+        add('Usage: biocode <command> [options]');
+        add('');
+        add('Commands:');
+        add('  debug <bam>              Diagnose common BAM issues; suggest fixes.');
+        add('  gen "<goal>"             Generate idempotent Snakemake slice.');
+        add('  explain <file> [--target=python] [--library=biopython]');
+        add('');
+        add('Flags:');
+        add('  -h, --help               Show this help.');
+        add('');
+        add('Examples:');
+        add('  biocode debug sample.bam');
+        add('  biocode gen "FASTQ to BAM: paired-end RNA-seq; hg38"');
+        add('  biocode explain legacy/fasta_parser.pl --target=python --library=biopython');
+        return;
+      }
       if(/^biocode\s+debug/i.test(c)){
         const m = c.match(/^biocode\s+debug\s+(\S+)/i); const bam = m?m[1]:undefined;
         await runSteps(scriptDebug(bam)); return;
       }
       if(/^biocode\s+gen/i.test(c)){ await runSteps(scriptGen()); return; }
       if(/^biocode\s+explain/i.test(c)){ await runSteps(scriptExplain()); return; }
-      if(/^(help|-h|--help)$/i.test(c)) { add('Usage: biocode [debug|gen|explain] …  · clear'); return; }
+      if(/^(help)$/i.test(c)) { add('Try: biocode -help'); return; }
       add('Command not found. Try "help".');
     }
 
@@ -187,10 +206,9 @@
     // Click to focus
     document.addEventListener('click', ()=> input.focus());
     // Initial hint
-    add('BioCode CLI (demo) — type "help" for commands.');
+    add('BioCode CLI (demo) — type "biocode -help" for commands.');
     input.focus();
   })();
   </script>
 </body>
 </html>
-

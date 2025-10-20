@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GeneLoop Showcase (Tabbed Demo)</title>
+  <style>
+    /* Design tokens (aligned with your palette) */
+    :root {
+      --background: oklch(0.19 0.02 260);
+      --foreground: oklch(0.96 0.02 260);
+      --card: oklch(0.22 0.02 260);
+      --primary: oklch(0.5855 0.1006 208.0245);
+      --secondary: oklch(0.48 0.0825 206.0615);
+      --muted: oklch(0.28 0.01 260);
+      --muted-foreground: oklch(0.70 0.02 260);
+      --accent: oklch(0.6697 0.1154 208.9445);
+      --destructive: oklch(0.5771 0.2152 27.3250);
+      --border: oklch(0.30 0.01 260);
+      --font-mono: "Fira Code", SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    :root[data-theme="light"] {
+      --background: oklch(0.9970 0 0);
+      --foreground: oklch(0.2047 0.0220 205.9882);
+      --card: oklch(0.9940 0 0);
+      --primary: oklch(0.5855 0.1006 208.0245);
+      --secondary: oklch(0.4820 0.0825 206.0615);
+      --muted: oklch(0.9712 0.0076 207.1422);
+      --muted-foreground: oklch(0.4758 0.0287 212.4485);
+      --accent: oklch(0.6697 0.1154 208.9445);
+      --destructive: oklch(0.5771 0.2152 27.3250);
+      --border: oklch(0.9351 0.0118 203.4677);
+    }
+    :root[data-theme="dark"] {
+      --background: oklch(0.19 0.02 260);
+      --foreground: oklch(0.96 0.02 260);
+      --card: oklch(0.22 0.02 260);
+      --primary: oklch(0.5855 0.1006 208.0245);
+      --secondary: oklch(0.48 0.0825 206.0615);
+      --muted: oklch(0.28 0.01 260);
+      --muted-foreground: oklch(0.70 0.02 260);
+      --accent: oklch(0.6697 0.1154 208.9445);
+      --destructive: oklch(0.5771 0.2152 27.3250);
+      --border: oklch(0.30 0.01 260);
+    }
+
+    html,body{height:100%;margin:0;background:var(--background);color:var(--foreground);font:16px/1.5 var(--font-mono);}    
+    .frame{max-width:1100px;margin:24px auto;border-radius:12px;overflow:hidden;box-shadow:0 10px 30px color-mix(in oklch, black 35%, transparent);border:1px solid var(--border)}
+    .titlebar{background:var(--card);height:36px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--border)}
+    .dot{width:12px;height:12px;border-radius:50%}
+    .dot.red{background:#ff5f57}.dot.yellow{background:#febc2e}.dot.green{background:#28c840}
+    .tabs{margin-left:12px;color:var(--muted-foreground);font-size:13px;opacity:.85}
+    .spacer{flex:1}
+    .toggle{background:transparent;border:1px solid var(--border);color:var(--foreground);border-radius:8px;padding:3px 8px;font-size:12px;cursor:pointer}
+    .toggle:hover{background:color-mix(in oklch, var(--primary) 10%, transparent);}
+    .toolbar{display:flex;gap:8px;padding:8px 12px;background:var(--card);border-bottom:1px solid var(--border)}
+    .tab{padding:6px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--muted-foreground)}
+    .tab[aria-selected="true"]{background:var(--primary);color:white;border-color:color-mix(in oklch, var(--primary) 30%, var(--border))}
+    .term{padding:16px 18px 80px;height:65vh;position:relative;overflow:auto}
+    .line{white-space:pre-wrap;word-break:break-word}
+    .label{color:var(--primary)}
+    .path{color:var(--secondary)}
+    .prompt{position:sticky;bottom:0;left:0;right:0;background:linear-gradient(180deg, color-mix(in oklch, var(--background) 0%, transparent) 0%, var(--background) 30%);padding-top:24px}
+    .row{display:flex;gap:8px;align-items:center}
+    .thinking{display:none;align-items:center;gap:10px;color:var(--accent);padding:8px 0}
+    .thinking .icon{min-width:16px;text-align:center}
+    .kbd{color:var(--muted-foreground);background:var(--card);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:12px}
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="frame" id="app">
+    <div class="titlebar">
+      <div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div>
+      <div class="tabs">iTerm — GeneLoop Showcase</div>
+      <div class="spacer"></div>
+      <button id="themeToggle" class="toggle">Dark</button>
+    </div>
+    <div class="toolbar" role="tablist" aria-label="GeneLoop Demos">
+      <button class="tab" role="tab" aria-selected="true" data-panel="debug">Debug</button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="gen">Generate</button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="explain">Explain</button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="refactor">Refactor</button>
+    </div>
+
+    <!-- Panels -->
+    <div class="term" id="panel-debug" role="tabpanel">
+      <div class="thinking"><span class="icon">•</span><span class="word">Scanning…</span></div>
+      <div class="line">macbook:~/geneloop-demo $ geneloop debug sample.bam</div>
+      <div class="line">[GeneLoop] Scanning filesystem… ok</div>
+      <div class="line">[GeneLoop] Detecting file type…      ok (BAM)</div>
+      <div class="line">[GeneLoop] Index presence…           missing (.bai not found)</div>
+      <div class="line">[GeneLoop] Read summary (fast scan):</div>
+      <div class="line">  - mapped: 97.6% | duplicates: 11.9% | multimappers: 6.3%</div>
+      <div class="line">[Model] Hypothesis: missing index; propose samtools index; re-check.</div>
+      <div class="line">[GeneLoop] Suggested next command:</div>
+      <div class="line">  samtools index -@ 8 sample.bam && samtools idxstats sample.bam | head</div>
+      <div class="line">[Decision] Auto-generate fix command? [y/N]: y</div>
+      <div class="line">Running: samtools index -@ 8 sample.bam</div>
+      <div class="line">[GeneLoop] Loading index… ok</div>
+      <div class="line">[GeneLoop] Index presence…           ok</div>
+      <div class="prompt"><div class="row"><span class="label">macbook</span>:<span class="path">~/geneloop-demo</span> $ <span class="kbd">Ready for IGV</span></div></div>
+    </div>
+
+    <div class="term" id="panel-gen" role="tabpanel" hidden>
+      <div class="thinking"><span class="icon">•</span><span class="word">Parsing…</span></div>
+      <div class="line">macbook:~/geneloop-demo $ geneloop gen "FASTQ to BAM: paired-end RNA-seq; hg38"</div>
+      <div class="line">[GeneLoop] Parsing intent… ok</div>
+      <div class="line">[GeneLoop] Emitting idempotent Snakemake slice (FASTQ ➜ BAM)</div>
+      <div class="line"># Snakefile</div>
+      <div class="line">rule all:
+    input: expand("results/bam/{sample}.bam.bai", sample=lambda: config['samples'])</div>
+      <div class="line">rule align_and_sort: …</div>
+      <div class="line"># envs/aln.yaml → bwa-mem2, samtools (pinned)</div>
+      <div class="line"># config.yaml → samples: [sampleA, sampleB]</div>
+      <div class="prompt"><div class="row"><span class="label">macbook</span>:<span class="path">~/geneloop-demo</span> $ <span class="kbd">copy, run, done</span></div></div>
+    </div>
+
+    <div class="term" id="panel-explain" role="tabpanel" hidden>
+      <div class="thinking"><span class="icon">•</span><span class="word">Reading…</span></div>
+      <div class="line">macbook:~/geneloop-demo $ geneloop explain legacy/fasta_parser.pl</div>
+      <div class="line">[Explain] Summary</div>
+      <div class="line">  - Purpose: parse FASTA and print id\tlength.</div>
+      <div class="line">  - Flow: header ">id" → collect sequence lines → output lengths.</div>
+      <div class="line">[Explain] Assumptions</div>
+      <div class="line">  - Header regex captures first token; multiline sequences supported.</div>
+      <div class="line">[Explain] Pitfalls</div>
+      <div class="line">  - Stores full sequences in memory; no warnings for malformed headers.</div>
+      <div class="line">[Explain] Next steps</div>
+      <div class="line">  - Add validation and tests for empty/multiline/odd headers.</div>
+      <div class="prompt"><div class="row"><span class="label">macbook</span>:<span class="path">~/geneloop-demo</span> $ <span class="kbd">context, not rewrite</span></div></div>
+    </div>
+
+    <div class="term" id="panel-refactor" role="tabpanel" hidden>
+      <div class="thinking"><span class="icon">•</span><span class="word">Refactoring…</span></div>
+      <div class="line">macbook:~/geneloop-demo $ geneloop refactor legacy/fasta_parser.pl --target=python --library=biopython</div>
+      <div class="line">Original (Perl, excerpt): open(...) … if (/^>(\S+)/) { … }</div>
+      <div class="line">Refactor (Python 3, Biopython): def fasta_lengths(path): return {rec.id: len(rec.seq) for rec in SeqIO.parse(path, "fasta")}</div>
+      <div class="line">Why safer: streaming parse; typed; easy tests.</div>
+      <div class="prompt"><div class="row"><span class="label">macbook</span>:<span class="path">~/geneloop-demo</span> $ <span class="kbd">ready to drop in</span></div></div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    const themeToggle=document.getElementById('themeToggle');
+    // Theme setup
+    (function initTheme(){
+      const saved = localStorage.getItem('gl-theme');
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = saved || (prefersDark ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+      themeToggle.textContent = theme === 'dark' ? 'Light' : 'Dark';
+    })();
+    themeToggle.addEventListener('click', ()=>{
+      const current = document.documentElement.getAttribute('data-theme') || 'light';
+      const next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('gl-theme', next);
+      themeToggle.textContent = next === 'dark' ? 'Light' : 'Dark';
+    });
+
+    // Tabs
+    const tabs = Array.from(document.querySelectorAll('.tab'));
+    const panels = {
+      debug: document.getElementById('panel-debug'),
+      gen: document.getElementById('panel-gen'),
+      explain: document.getElementById('panel-explain'),
+      refactor: document.getElementById('panel-refactor'),
+    };
+
+    function showThinking(panel){
+      const t = panel.querySelector('.thinking');
+      if(!t) return;
+      const icon = t.querySelector('.icon');
+      const word = t.querySelector('.word');
+      const words = ['Parsing…','Scanning…','Weaving…','Shaping…','Tuning…','Carving…'];
+      const icons = ['•','✢','✳','*','✻','✽'];
+      let wi=0, ii=0;
+      t.style.display='flex';
+      const ivI = setInterval(()=>{ icon.textContent = icons[ii++%icons.length]; }, 300);
+      const ivW = setInterval(()=>{ word.textContent = words[wi++%words.length]; }, 600);
+      const duration = Math.random()*1200 + 1600;
+      setTimeout(()=>{ clearInterval(ivI); clearInterval(ivW); t.style.display='none'; }, duration);
+    }
+
+    function activate(name){
+      tabs.forEach(btn=> btn.setAttribute('aria-selected', btn.dataset.panel===name ? 'true':'false'));
+      Object.entries(panels).forEach(([k,el])=>{ el.hidden = k!==name; if(k===name){ el.scrollTop=0; showThinking(el); }});
+    }
+
+    tabs.forEach(btn=> btn.addEventListener('click', ()=> activate(btn.dataset.panel)));
+    // initial thinking animation
+    showThinking(panels.debug);
+  })();
+  </script>
+</body>
+</html>
+

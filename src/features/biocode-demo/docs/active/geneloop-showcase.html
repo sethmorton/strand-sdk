@@ -87,58 +87,22 @@
     <!-- Panels -->
     <div class="term" id="panel-debug" role="tabpanel">
       <div class="thinking"><span class="icon">•</span><span class="word">Scanning…</span></div>
-      <div class="line">macbook:~/geneloop-demo $ geneloop debug sample.bam</div>
-      <div class="line">[GeneLoop] Scanning filesystem… ok</div>
-      <div class="line">[GeneLoop] Detecting file type…      ok (BAM)</div>
-      <div class="line">[GeneLoop] Index presence…           missing (.bai not found)</div>
-      <div class="line">[GeneLoop] Read summary (fast scan):</div>
-      <div class="line">  - mapped: 97.6% | duplicates: 11.9% | multimappers: 6.3%</div>
-      <div class="line">[Model] Hypothesis: missing index; propose samtools index; re-check.</div>
-      <div class="line">[GeneLoop] Suggested next command:</div>
-      <div class="line">  samtools index -@ 8 sample.bam && samtools idxstats sample.bam | head</div>
-      <div class="line">[Decision] Auto-generate fix command? [y/N]: y</div>
-      <div class="line">Running: samtools index -@ 8 sample.bam</div>
-      <div class="line">[GeneLoop] Loading index… ok</div>
-      <div class="line">[GeneLoop] Index presence…           ok</div>
-      <div class="prompt"><div class="row"><span class="label">macbook</span>:<span class="path">~/geneloop-demo</span> $ <span class="kbd">Ready for IGV</span></div></div>
+      <div class="output"></div>
     </div>
 
     <div class="term" id="panel-gen" role="tabpanel" hidden>
       <div class="thinking"><span class="icon">•</span><span class="word">Parsing…</span></div>
-      <div class="line">macbook:~/geneloop-demo $ geneloop gen "FASTQ to BAM: paired-end RNA-seq; hg38"</div>
-      <div class="line">[GeneLoop] Parsing intent… ok</div>
-      <div class="line">[GeneLoop] Emitting idempotent Snakemake slice (FASTQ ➜ BAM)</div>
-      <div class="line"># Snakefile</div>
-      <div class="line">rule all:
-    input: expand("results/bam/{sample}.bam.bai", sample=lambda: config['samples'])</div>
-      <div class="line">rule align_and_sort: …</div>
-      <div class="line"># envs/aln.yaml → bwa-mem2, samtools (pinned)</div>
-      <div class="line"># config.yaml → samples: [sampleA, sampleB]</div>
-      <div class="prompt"><div class="row"><span class="label">macbook</span>:<span class="path">~/geneloop-demo</span> $ <span class="kbd">copy, run, done</span></div></div>
+      <div class="output"></div>
     </div>
 
     <div class="term" id="panel-explain" role="tabpanel" hidden>
       <div class="thinking"><span class="icon">•</span><span class="word">Reading…</span></div>
-      <div class="line">macbook:~/geneloop-demo $ geneloop explain legacy/fasta_parser.pl</div>
-      <div class="line">[Explain] Summary</div>
-      <div class="line">  - Purpose: parse FASTA and print id\tlength.</div>
-      <div class="line">  - Flow: header ">id" → collect sequence lines → output lengths.</div>
-      <div class="line">[Explain] Assumptions</div>
-      <div class="line">  - Header regex captures first token; multiline sequences supported.</div>
-      <div class="line">[Explain] Pitfalls</div>
-      <div class="line">  - Stores full sequences in memory; no warnings for malformed headers.</div>
-      <div class="line">[Explain] Next steps</div>
-      <div class="line">  - Add validation and tests for empty/multiline/odd headers.</div>
-      <div class="prompt"><div class="row"><span class="label">macbook</span>:<span class="path">~/geneloop-demo</span> $ <span class="kbd">context, not rewrite</span></div></div>
+      <div class="output"></div>
     </div>
 
     <div class="term" id="panel-refactor" role="tabpanel" hidden>
       <div class="thinking"><span class="icon">•</span><span class="word">Refactoring…</span></div>
-      <div class="line">macbook:~/geneloop-demo $ geneloop refactor legacy/fasta_parser.pl --target=python --library=biopython</div>
-      <div class="line">Original (Perl, excerpt): open(...) … if (/^>(\S+)/) { … }</div>
-      <div class="line">Refactor (Python 3, Biopython): def fasta_lengths(path): return {rec.id: len(rec.seq) for rec in SeqIO.parse(path, "fasta")}</div>
-      <div class="line">Why safer: streaming parse; typed; easy tests.</div>
-      <div class="prompt"><div class="row"><span class="label">macbook</span>:<span class="path">~/geneloop-demo</span> $ <span class="kbd">ready to drop in</span></div></div>
+      <div class="output"></div>
     </div>
   </div>
 
@@ -183,18 +147,184 @@
       const ivW = setInterval(()=>{ word.textContent = words[wi++%words.length]; }, 600);
       const duration = Math.random()*1200 + 1600;
       setTimeout(()=>{ clearInterval(ivI); clearInterval(ivW); t.style.display='none'; }, duration);
+      }
+
+    // Type-out renderer: prints lines then stays
+    async function typeOut(panel, lines){
+      const out = panel.querySelector('.output');
+      out.innerHTML='';
+      const sleep=(ms)=> new Promise(r=>setTimeout(r,ms));
+      for(const ln of lines){
+        const d=document.createElement('div'); d.className='line'; d.textContent=ln; out.appendChild(d);
+        panel.scrollTop = panel.scrollHeight;
+        await sleep(80);
+      }
+      // show prompt-like footer
+      const prompt=document.createElement('div');
+      prompt.className='prompt';
+      prompt.innerHTML='<div class="row"><span class="label">macbook</span>:<span class="path">~/geneloop-demo</span> $</div>';
+      out.appendChild(prompt);
     }
 
-    function activate(name){
+    const scripts = {
+      debug: [
+        'macbook:~/geneloop-demo $ geneloop debug sample.bam',
+        '[GeneLoop] Scanning filesystem (cwd, neighbors)… ok',
+        '[GeneLoop] Detecting file type…      ok (BAM)',
+        '[GeneLoop] Quick sanity checks…      ok (sorted: coordinate)',
+        '[GeneLoop] Index presence…           missing (.bai not found)',
+        '[GeneLoop] Read summary (fast scan):',
+        '  - total reads: ~42,317,894',
+        '  - mapped: 97.6%   | properly paired: 95.8%',
+        '  - duplicates: 11.9% (flag-based)',
+        '  - multimappers: 6.3%',
+        '  - median insert size: 286 bp',
+        '  - GC content (reads): 42% | reference: 41%',
+        '[Model] Thinking…',
+        '[Model] Hypothesis: BAM is sorted; missing sidecar index (.bai).',
+        '[Model] Evidence: SO:coordinate in header; .bai absent; typical idxstats/IGV failure.',
+        '[Model] Plan: propose samtools index; re-check; warn on multimappers/GC.',
+        '[Issue 1] Missing BAM index',
+        '  Fix: samtools index -@ 8 sample.bam',
+        '[Issue 2] Multimapper noise (6.3%) — consider MAPQ >=10 or STAR',
+        '[Note] GC bias (coarse) — no strong deviation observed',
+        '[GeneLoop] Suggested next command:',
+        '  samtools index -@ 8 sample.bam && samtools idxstats sample.bam | head',
+        '[Decision] Auto-generate fix command? [y/N]: y',
+        'Running: samtools index -@ 8 sample.bam',
+        '  writing index… done',
+        '[Index] Done: sample.bam.bai (2.1s)',
+        'Re-checking…',
+        '[GeneLoop] Loading index… ok',
+        '[GeneLoop] Index presence…           ok',
+        '[GeneLoop] Ready for IGV / variant calling.',
+        'Summary',
+        '  Root cause: Missing .bai after sort',
+        '  Fix applied: samtools index -@ 8 sample.bam',
+        '  Risk notes: multimappers ~6.3%; consider MAPQ filter (>=10)'
+      ],
+      gen: [
+        'macbook:~/geneloop-demo $ geneloop gen "FASTQ to BAM: paired-end RNA-seq; hg38"',
+        '[GeneLoop] Parsing intent… ok',
+        '[Model] Reasoning: paired-end RNA‑seq; hg38; prefer bwa-mem2 for demo speed.',
+        '[Model] Plan: emit minimal idempotent slice + environment pins.',
+        '[GeneLoop] Resolving toolchain (bwa-mem2, samtools)… ok',
+        '[GeneLoop] Emitting idempotent Snakemake slice (FASTQ ➜ BAM)',
+        '# Snakefile',
+        'rule all:',
+        '    input: expand("results/bam/{sample}.bam.bai", sample=lambda: config[\'samples\'])',
+        '',
+        'rule align_and_sort:',
+        '    input:',
+        '        r1="data/fastq/{sample}_R1.fastq.gz",',
+        '        r2="data/fastq/{sample}_R2.fastq.gz",',
+        '        ref="refs/hg38.fa"',
+        '    output:',
+        '        bam=temp("results/bam/{sample}.bam"),',
+        '        bai="results/bam/{sample}.bam.bai"',
+        '    params:',
+        '        threads=8,',
+        '        bwa_opts="-R \'@RG\\tID:{wildcards.sample}\\tSM:{wildcards.sample}\\tPL:ILLUMINA\'"',
+        '    log: "logs/{sample}.align.log"',
+        '    conda: "envs/aln.yaml"',
+        '    shell:',
+        '        r"""',
+        '        set -eo pipefail',
+        '        if [ ! -s {output.bam} ]; then',
+        '          bwa-mem2 mem -t {params.threads} {params.bwa_opts} {input.ref} {input.r1} {input.r2} 2>> {log} | \',
+        '          samtools view -@ {params.threads} -bS - | \',
+        '          samtools sort -@ {params.threads} -o {output.bam} - 2>> {log}',
+        '        fi',
+        '        samtools index -@ {params.threads} {output.bam} 2>> {log}',
+        '        """',
+        '',
+        '# envs/aln.yaml',
+        'name: biocode-aln',
+        'channels: [conda-forge, bioconda]',
+        'dependencies:',
+        '  - bwa-mem2=2.*',
+        '  - samtools=1.19.*',
+        '',
+        '# config.yaml',
+        'samples:',
+        '  - sampleA',
+        '  - sampleB',
+        '[GeneLoop] Files written: Snakefile, envs/aln.yaml, config.yaml (virtual).',
+        'Notes: Replace BWA-MEM2 with STAR for spliced RNA‑seq if preferred.',
+        'Idempotent: no re-run if outputs exist; index enforced.'
+      ],
+      explain: [
+        'macbook:~/geneloop-demo $ geneloop explain legacy/fasta_parser.pl',
+        '[GeneLoop] Reading file: legacy/fasta_parser.pl…',
+        '[Explain] Summary',
+        '  - Purpose: parse FASTA records and print id\tlength TSV.',
+        '  - Flow: detect headers (">id"), accumulate sequence lines per id, output lengths.',
+        '[Explain] Assumptions',
+        '  - Header regex: /^(\\S+)/ captures ID without spaces.',
+        '  - Multiline sequences supported; blank lines ignored.',
+        '[Explain] Pitfalls',
+        '  - Memory growth: stores entire sequences in a hash (large FASTA → high RAM).',
+        '  - Malformed/missing headers collapse into empty key; no warnings.',
+        '[Explain] Edge cases',
+        '  - Headers with spaces truncated at first whitespace.',
+        '  - Non-FASTA lines are concatenated silently.',
+        '[Explain] Next steps',
+        '  - Add input validation + friendly errors.',
+        '  - Add tests: empty file, multiline, odd headers. Consider streaming parser.'
+      ],
+      refactor: [
+        'macbook:~/geneloop-demo $ geneloop refactor legacy/fasta_parser.pl --target=python --library=biopython',
+        'Original (Perl, excerpt):',
+        '------------------------------------------------------------',
+        'open(my $fh, "<", $ARGV[0]) or die $!;',
+        'my %seq; my $h = "";',
+        'while (my $l = <$fh>) {',
+        '  chomp $l;',
+        '  if ($l =~ /^>(\\S+)/) { $h = $1; $seq{$h} = ""; }',
+        '  else { $seq{$h} .= $l; }',
+        '}',
+        'for my $k (keys %seq) { print "$k\\t" . length($seq{$k}) . "\\n"; }',
+        'Refactor (Python 3, Biopython):',
+        '------------------------------------------------------------',
+        'from __future__ import annotations',
+        'from typing import Dict',
+        'from Bio import SeqIO',
+        'from pathlib import Path',
+        'import sys',
+        '',
+        'def fasta_lengths(path: str | Path) -> Dict[str, int]:',
+        '    records = SeqIO.parse(str(path), "fasta")',
+        '    return {rec.id: len(rec.seq) for rec in records}',
+        '',
+        'if __name__ == "__main__":',
+        '    if len(sys.argv) < 2:',
+        '        sys.exit("usage: python fasta_lengths.py <file.fasta>")',
+        '    lengths = fasta_lengths(sys.argv[1])',
+        '    for k, v in lengths.items():',
+        '        print(f"{k}\\t{v}")',
+        'Why safer: Biopython parser; typed; stream-based; easy tests.'
+      ]
+    };
+
+    const played = { debug:false, gen:false, explain:false, refactor:false };
+
+    async function activate(name){
       tabs.forEach(btn=> btn.setAttribute('aria-selected', btn.dataset.panel===name ? 'true':'false'));
-      Object.entries(panels).forEach(([k,el])=>{ el.hidden = k!==name; if(k===name){ el.scrollTop=0; showThinking(el); }});
+      Object.entries(panels).forEach(([k,el])=>{ el.hidden = k!==name; });
+      const panel = panels[name];
+      panel.scrollTop=0;
+      if(!played[name]){
+        showThinking(panel);
+        // wait the same duration as showThinking setTimeout upper bound
+        setTimeout(()=>{ typeOut(panel, scripts[name]); }, 1800);
+        played[name]=true;
+      }
     }
 
     tabs.forEach(btn=> btn.addEventListener('click', ()=> activate(btn.dataset.panel)));
     // initial thinking animation
-    showThinking(panels.debug);
+    activate('debug');
   })();
   </script>
 </body>
 </html>
-

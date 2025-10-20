@@ -60,7 +60,8 @@
     .line{white-space:pre-wrap;word-break:break-word}
     .label{color:var(--primary)}
     .path{color:var(--secondary)}
-    .prompt{position:sticky;bottom:0;left:0;right:0;background:linear-gradient(180deg, color-mix(in oklch, var(--background) 0%, transparent) 0%, var(--background) 30%);padding-top:24px}
+    /* In showcase we don't need a sticky prompt; keep normal flow */
+    .prompt{position:relative;bottom:auto;left:auto;right:auto;background:transparent;padding-top:0}
     .row{display:flex;gap:8px;align-items:center}
     .thinking{display:none;align-items:center;gap:10px;color:var(--accent);padding:8px 0}
     .thinking .icon{min-width:16px;text-align:center}

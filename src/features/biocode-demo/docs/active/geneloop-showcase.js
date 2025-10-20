@@ -52,10 +52,7 @@
       await sleep(160);
       if(typeof item === 'object' && item.pauseMs){ await sleep(item.pauseMs); }
     }
-    const prompt=document.createElement('div');
-    prompt.className='prompt';
-    prompt.innerHTML='<div class="row"><span class="label">macbook</span>:<span class="path">~/geneloop-demo</span> $</div>';
-    out.appendChild(prompt);
+    // No sticky closing prompt in showcase to avoid overlap/duplication
   }
 
   const scripts = {

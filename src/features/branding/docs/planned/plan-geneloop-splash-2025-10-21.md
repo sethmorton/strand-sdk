@@ -77,6 +77,20 @@ References used (Context7): chalk basic/hex/rgb usage, color levels; figlet.js `
 // src/features/branding/theme/colors.ts
 import chalk, {supportsColor} from 'chalk';
 
+// Light Mode gradient (demo blues) — stops come from demo CSS
+// Source CSS (light): src/features/biocode-demo/docs/active/geneloop-showcase.html
+// :root[data-theme="light"]
+//   --secondary: oklch(0.4820 0.0825 206.0615)
+//   --primary:   oklch(0.5855 0.1006 208.0245)
+//   --accent:    oklch(0.6697 0.1154 208.9445)
+// Implementation note: we will precompute sRGB hex for these three stops and paste below.
+export const LIGHT_BLUE_STOPS = [
+  /* secondary */ '#TODO_SEC_HEX',
+  /* primary   */ '#TODO_PRI_HEX',
+  /* accent    */ '#TODO_ACC_HEX',
+] as const;
+
+// Alternate preset
 export const DNA_GRADIENT = ['#00FF00', '#0000FF'] as const;
 
 export const supportsTruecolor = () => Boolean(supportsColor && supportsColor.has256 && supportsColor.has16m);
@@ -91,7 +105,7 @@ const hexToRgb = (hex: string) => {
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-export function gradientLine(text: string, fromHex = DNA_GRADIENT[0], toHex = DNA_GRADIENT[1]): string {
+export function gradientLine(text: string, fromHex = LIGHT_BLUE_STOPS[0], toHex = LIGHT_BLUE_STOPS[LIGHT_BLUE_STOPS.length-1]): string {
   if (!supportsTruecolor()) return chalk.green(text); // graceful fallback
   const from = hexToRgb(fromHex);
   const to = hexToRgb(toHex);
@@ -119,13 +133,12 @@ const BORDER = { tl: '╭', tr: '╮', bl: '╰', br: '╯', h: '─', v: '│' 
 // Option A: Generate at runtime with figlet (configure font elsewhere)
 export function renderAsciiLogo(lines: string[]): string[] { return lines; }
 
-// Example baked ASCII (replace with generated or custom font at build time):
+// GeneLoop ASCII (baked, provided by user file)
+// Source file: /Users/sethmorton/Downloads/ascii-text-art.txt (16 lines)
+// We will paste the final content into src/features/branding/ui/logo.geneloop.ts
+// and import it here. Placeholder for now:
 const GENELOOP_ASCII = [
-  '  ██████  ███████ ███    ██ ███████ ██      ██████   ██████  ',
-  '  ██   ██ ██      ████   ██ ██      ██      ██   ██ ██    ██ ',
-  '  ██████  █████   ██ ██  ██ █████   ██      ██████  ██    ██ ',
-  '  ██   ██ ██      ██  ██ ██ ██      ██      ██   ██ ██    ██ ',
-  '  ██   ██ ███████ ██   ████ ███████ ███████ ██   ██  ██████  ',
+  '<<PASTE_FINAL_ASCII_LINES_HERE>>'
 ];
 
 export function buildBanner(): string {

@@ -1,0 +1,14 @@
+[package]
+name = "geneloop-cli"
+version = "0.1.0"
+edition = "2021"
+description = "GeneLoop CLI — terminal-native AI workflows (fork-style demo)"
+license = "Apache-2.0"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.27"
+supports-color = "3"
+palette = { version = "0.7", features = ["std"] }
+

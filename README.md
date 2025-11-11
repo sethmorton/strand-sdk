@@ -1,29 +1,31 @@
 # Strand SDK
 
-> **⚠️ Status: Work In Progress (WIP)**
+> **⚠️ Status: Pre-Alpha**
 >
-> Strand is under active development. The API is **not stable** and will change significantly before v1.0.0. Use at your own risk for production workloads.
+> Strand is under active development. The public API surface will continue to change until after the first design-partner runs ship.
 
-Strand is a Python toolkit for optimizing biological sequences (proteins, DNA, RNA, antibodies) with composable reward blocks and interchangeable optimization backends. The SDK provides production-ready tools for sequence design and optimization with comprehensive provenance tracking.
+Strand is an early-stage Python SDK that brokers between generative biology models and wet-lab programs. Teams plug in model proposals, define biological objectives, and let Strand run constrained search to surface a handful of sequences worth testing. Every run emits a manifest with the model versions, reward blocks, and search parameters so results stay repeatable and defensible.
+
+This repository tracks the open-source optimization engine. Managed cloud and on-prem packages for regulated teams will layer on the same primitives once we prove out the tracing and optimization stack with design partners.
 
 ## Status
 
-- **Current Phase**: Core API development and stabilization
-- **Focus**: Establish core API primitives, reward block architecture, provenance manifests, and developer tooling
-- **Stability**: Experimental — breaking changes may occur in minor versions
-- **Next Milestones**: 
-  - v0.2.0: Production-grade optimizers (CEM, CMA-ES)
-  - v0.3.0: Protein structure prediction integration
-  - v1.0.0: Stable API and comprehensive documentation
+- **Current Phase**: Optimization engine + tracing layer under active development with design partners
+- **Focus**: Model adapters, reward-block graph, reproducible manifests, CLI tooling
+- **Stability**: Pre-alpha — expect breaking changes between commits
+- **Near-Term Milestones**:
+  - **Mid December 2025**: first closed design-partner optimization runs connected to wet-lab programs
+  - **Q1 2026**: tagged open-source release of the engine + manifest tooling
+  - **Q2 2026**: managed cloud and on-prem deployments for regulated workloads
 
-## Features (Planned)
+## SDK Scope
 
-1. Modular optimization strategies (CEM, CMA-ES, Genetic Algorithm, Random search baseline)
-2. Built-in reward blocks for stability, solubility, novelty, and length preference
-3. Provenance manifests capturing every experiment input, configuration, and result
-4. Composable CLI, docs, tests, and benchmarks for reproducible research
+1. **Model Inputs**: adapters for plugging foundation or in-house generative models straight into Strand’s search loop
+2. **Search Engines**: interchangeable algorithms (CEM, CMA-ES, genetic, random) tuned for sequence space exploration under constraints
+3. **Reward Blocks**: composable scoring functions (stability, solubility, novelty, manufacturability) plus extension points for lab-specific metrics
+4. **Provenance + CLI**: manifests that log parameters, model versions, and reward graphs so every run is auditable, plus CLI tooling for submitting and tracing jobs
 
-## Quick Start (Draft)
+## Quick Start (Pre-Alpha)
 
 ```bash
 # from strand-sdk root
@@ -57,8 +59,8 @@ See `GITHUB_REPO_STRUCTURE.md` in the design workspace for the authoritative tar
 
 ## Contributing
 
-Please review `CONTRIBUTING.md` for coding standards (Google TS/py style analog), testing expectations, and the dual-license policy.
+Please review `CONTRIBUTING.md` for coding standards, testing expectations, and contribution guidelines.
 
-## License
+## 📄 License
 
-MIT OR Apache-2.0 (TBD). Placeholder text lives in `LICENSE` until legal review completes.
+This project is licensed under the terms of the MIT license - see [LICENSE](LICENSE) for details.

@@ -1,5 +1,7 @@
 """Reward block factory exports."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -34,11 +36,34 @@ class RewardBlock:
 
     @staticmethod
     def custom(
-        name: str,
-        fn: Callable[["Sequence", RewardContext], float],
+        fn: Callable[[Sequence, RewardContext], float],
+        name: str | None = None,
         weight: float = 1.0,
     ) -> CustomReward:
-        return CustomReward(fn=fn, name=name, weight=weight)
+        """Create a custom reward block from a scoring function.
+
+        Args:
+            fn: Scoring function that takes (Sequence, RewardContext) and returns float
+            name: Optional name for the reward block. Auto-generated from function name if not provided
+            weight: Weight multiplier for the reward score (default: 1.0)
+
+        Returns:
+            CustomReward: A configured reward block
+
+        Example:
+            ```python
+            def my_scorer(seq: Sequence, ctx: RewardContext) -> float:
+                return 1.0 if "MK" in seq.tokens else 0.0
+
+            # With auto-generated name
+            block = RewardBlock.custom(fn=my_scorer, weight=0.5)
+
+            # With explicit name
+            block = RewardBlock.custom(fn=my_scorer, name="starts_with_mk", weight=0.5)
+            ```
+        """
+        auto_name = name or f"custom_{fn.__name__}"
+        return CustomReward(fn=fn, name=auto_name, weight=weight)
 
     @staticmethod
     def from_registry(name: str, **kwargs: object) -> object:

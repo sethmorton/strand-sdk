@@ -1,8 +1,16 @@
 # Strand SDK
 
-> Status: Pre‑Alpha — surfaces stabilized; implementations landing next.
+> Status: **Alpha** — Full Ctrl-DNA implementation complete with evolutionary strategies, RL optimization, foundation models, and reward blocks.
 
-Strand is a modular optimization engine for biological sequences. You compose a strategy (how to propose candidates), an evaluator (how to measure them), and an executor (how to run evaluations in parallel). A tiny scoring function blends metrics and constraints into a single number to optimize. The engine then runs an iterative ask → evaluate → score → tell loop and records iteration summaries for reproducibility.
+Strand is a production-ready optimization engine for biological sequences. Compose a **strategy** (how to propose candidates), an **evaluator** (how to measure quality), and an **executor** (how to parallelize). The engine runs an iterative **ask → evaluate → score → tell** loop with full reproducibility via manifests.
+
+**Highlights:**
+- 6 built-in strategies: Random, CEM, GA, CMA-ES, RL Policy, Hybrid
+- Foundation model support: HyenaDNA with pluggable policy heads
+- Advanced reward blocks: GC content, Enformer, TFBS correlation
+- Adaptive constraints: Dual variable managers for feasibility
+- Full SFT support: Supervised fine-tuning warm-start for RL
+- Reproducibility: Manifests, checkpoints, MLflow integration
 
 ## Mental Model
 
@@ -13,7 +21,9 @@ Strand is a modular optimization engine for biological sequences. You compose a 
 - Strategy ingests feedback: `tell([(seq, score, metrics)])` and updates its state
 - Optional rule manager updates weights from constraint violations
 
-## Quick Start (Surfaces)
+## Quick Start
+
+**Start simple, add complexity as needed:**
 
 ```bash
 # from strand-sdk root
@@ -23,46 +33,25 @@ pip install -r requirements-dev.txt
 pip install -e .
 ```
 
+**Level 1 — Basic (5 minutes):**
 ```python
-from strand.core.sequence import Sequence
-from strand.rewards import RewardBlock
-from strand.engine import (
-    Engine, EngineConfig, Metrics,
-    Strategy, Evaluator, Executor,
-    BoundedConstraint, Direction, Rules, default_score,
-)
+from strand.engine.strategies import RandomStrategy
+from strand.rewards.basic import GCContentReward
+from strand.evaluators.composite import CompositeEvaluator
 from strand.engine.executors.local import LocalExecutor
-from strand.evaluators.reward_aggregator import RewardAggregator
+from strand.engine.engine import Engine, EngineConfig
 
-# Sequences and rewards (heuristics today)
-sequences = ["MKTAYIAKQRQISFVKSHFSRQDILDLQY"]
-rewards = [RewardBlock.stability(), RewardBlock.novelty(baseline=["MKT..."], weight=0.5)]
-
-# Evaluator and executor
-evaluator: Evaluator = RewardAggregator(reward_blocks=rewards)
-executor: Executor = LocalExecutor(evaluator=evaluator, batch_size=64)
-
-# Optional constraints and rules
-constraints = [BoundedConstraint(name="novelty", direction=Direction.GE, bound=0.3)]
-rules = Rules(init={c.name: 0.2 for c in constraints})
-
-# Strategy and engine config (example placeholders)
-class RandomStrategy:  # implements Strategy Protocol
-    ...
-
-config = EngineConfig(iterations=50, population_size=256, seed=1337)
-engine = Engine(
-    config=config,
-    strategy=RandomStrategy(),
-    evaluator=evaluator,
-    executor=executor,
-    score_fn=default_score,  # or a trivial lambda m, r, cs: m.objective
-    constraints=constraints,
-    rules=rules,
-)
-
-results = engine.run()  # surface placeholder today
+strategy = RandomStrategy(alphabet="ACGT", min_len=50, max_len=500)
+evaluator = CompositeEvaluator([GCContentReward(target=0.5)])
+executor = LocalExecutor(evaluator)
+engine = Engine(strategy, executor, EngineConfig(iterations=5, population_size=32))
+results = engine.run()
 ```
+
+**Level 2+ — Advanced:**
+See [docs/getting_started.md](docs/getting_started.md) for intermediate strategies (CEM, GA) and advanced rewards (Enformer, TFBS with foundation models).
+
+See [docs/tutorial/core_concepts.md](docs/tutorial/core_concepts.md) for detailed examples with constraints, RL fine-tuning, and adaptive optimization.
 
 ## Extending
 

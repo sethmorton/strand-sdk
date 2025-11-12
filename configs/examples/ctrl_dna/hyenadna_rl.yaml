@@ -1,0 +1,172 @@
+# HyenaDNA RL Policy Configuration
+# ================================
+#
+# This configuration demonstrates how to use HyenaDNA as a backbone for
+# RL-based DNA sequence optimization via Ctrl-DNA style constrained RL.
+#
+# Usage:
+#   strand run configs/examples/ctrl_dna/hyenadna_rl.yaml
+#
+# To override specific parameters at runtime:
+#   strand run configs/examples/ctrl_dna/hyenadna_rl.yaml \
+#     engine.iterations=500 \
+#     model.device="cuda:0"
+
+# Engine Configuration
+# ====================
+engine:
+  # Number of optimization iterations
+  iterations: 200
+  
+  # Population size per iteration
+  population_size: 64
+  
+  # Random seed for reproducibility
+  seed: 42
+  
+  # Timeout per sequence evaluation (seconds)
+  timeout_s: 60.0
+  
+  # Early stopping patience (stop if no improvement for N iterations)
+  early_stop_patience: 20
+  
+  # Method label (descriptive, not affecting algorithm)
+  method: "hyenadna-rl-policy"
+  
+  # Optional max evaluations limit
+  max_evals: null
+
+# Strategy Configuration
+# ======================
+strategy:
+  # Strategy type
+  type: "rl-policy"
+  
+  # DNA alphabet
+  alphabet: "ACGT"
+  
+  # Sequence length constraints
+  min_len: 50
+  max_len: 500
+  
+  # RL hyperparameters
+  learning_rate: 0.1
+  temperature: 1.0
+  constraint_penalty: 1.0
+  
+  # Policy head configuration
+  policy_head:
+    type: "hyenadna"
+    
+    # HyenaDNA model source
+    # Options:
+    # 1. Hugging Face Hub: "hyena/hyenadna-tiny-1k"
+    # 2. Local path: "/path/to/checkpoint"
+    model_id: "hyena/hyenadna-tiny-1k"
+    
+    # Optional: Local checkpoint path (overrides model_id if provided)
+    checkpoint_path: null
+    
+    # Freeze backbone weights (recommended to save memory)
+    freeze_backbone: true
+    
+    # HyenaDNA backbone hidden size (typically 256 for tiny, 1024 for small)
+    backbone_hidden_size: 256
+
+# Device and Runtime Configuration
+# =================================
+device:
+  # Target device: "cpu", "cuda", or "cuda:0", "cuda:1", etc.
+  target: "cpu"
+  
+  # Mixed precision: "no", "fp16", "bf16"
+  # Use "bf16" for A100/H100 GPUs, "fp16" for older GPUs, "no" for CPU
+  mixed_precision: "no"
+  
+  # Gradient accumulation steps (for memory-constrained scenarios)
+  gradient_accumulation_steps: 1
+
+# Batch Configuration
+# ===================
+batch:
+  # Batch size during evaluation
+  eval_size: 32
+  
+  # Batch size during fine-tuning
+  train_size: 8
+  
+  # Maximum tokens per batch (limits sequence length in batch)
+  # For HyenaDNA-tiny, ~1K context. For small, ~32K context.
+  max_tokens: 1024
+
+# Supervised Fine-Tuning (Optional)
+# ==================================
+sft:
+  # Enable SFT warm-start before RL?
+  enabled: false
+  
+  # Path to training dataset (FASTA or CSV)
+  dataset_path: null
+  
+  # Number of SFT epochs
+  epochs: 1
+  
+  # Fraction of data to use for validation
+  val_split: 0.1
+
+# Evaluation Configuration
+# ========================
+evaluation:
+  # Reward blocks to combine (see docs/rewards/enformer_tfbs.md)
+  reward_blocks:
+    - type: "mock_reward"
+      weight: 1.0
+  
+  # Constraints to enforce
+  constraints:
+    - name: "gc_content"
+      min: 0.3
+      max: 0.7
+      penalty: 0.5
+
+# Logging Configuration
+# =====================
+logging:
+  # MLflow tracking server URI (use "local" for local tracking)
+  mlflow_uri: "local"
+  
+  # Experiment name
+  experiment: "ctrl-dna-hyenadna-rl"
+  
+  # Run name (uses timestamp if not provided)
+  run_name: null
+  
+  # Log frequency (every N iterations)
+  log_interval: 10
+  
+  # Checkpoint directory
+  checkpoint_dir: "./checkpoints/hyenadna-rl"
+  
+  # Save best model?
+  save_best: true
+
+# Reproducibility
+# ================
+notes: |
+  This configuration demonstrates an end-to-end Ctrl-DNA pipeline:
+  
+  1. Load HyenaDNA-tiny from Hugging Face Hub (or local checkpoint)
+  2. Create a policy head using HyenaDNA as backbone
+  3. Initialize RL strategy with the policy head
+  4. Run optimization loop:
+     - ask(): Generate sequences via autoregressive sampling
+     - evaluate: Score with reward blocks + constraints
+     - tell(): Update policy via REINFORCE
+  5. Log results to MLflow
+  
+  Key Files:
+  - strand/models/hyenadna.py: Model loader
+  - strand/engine/strategies/policy_heads.py: Policy head implementations
+  - strand/engine/strategies/rl_policy.py: RL strategy
+  - docs/architecture/strategies.md: Architecture guide
+

@@ -4,7 +4,31 @@ pandas>=2.1
 rich>=13.7
 pydantic>=2.6
 
-# Phase 5+ features
+# Deep Learning & PyTorch Ecosystem
+torch>=2.0.0
+accelerate>=0.24.0
+torchrl>=0.4.0
+pytorch-lightning>=2.1.0
+
+# Configuration Management
+pyyaml>=6.0
+hydra-core>=1.3.0
+
+# Experiment Tracking
+mlflow>=2.0.0
+
+# Model Management
+transformers>=4.35.0
+tokenizers>=0.14.0
+
+# Bioinformatics
+biopython>=1.81
+pyJASPAR>=1.2.0  # JASPAR motif database access
+
+# Utilities
+requests>=2.31.0
+filelock>=3.13.0
+
+# Optimization Algorithms
 cma>=3.0.0              # CMA-ES continuous optimization
-mlflow>=2.0.0           # Experiment tracking and reproducibility
 # constraint>=1.4.0     # Constraint satisfaction solver (has Python 3.14 compatibility issues)

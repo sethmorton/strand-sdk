@@ -1,31 +1,19 @@
 # Strand SDK
 
-> **⚠️ Status: Pre-Alpha**
->
-> Strand is under active development. The public API surface will continue to change until after the first design-partner runs ship.
+> Status: Pre‑Alpha — surfaces stabilized; implementations landing next.
 
-Strand is an early-stage Python SDK that brokers between generative biology models and wet-lab programs. Teams plug in model proposals, define biological objectives, and let Strand run constrained search to surface a handful of sequences worth testing. Every run emits a manifest with the model versions, reward blocks, and search parameters so results stay repeatable and defensible.
+Strand is a modular optimization engine for biological sequences. You compose a strategy (how to propose candidates), an evaluator (how to measure them), and an executor (how to run evaluations in parallel). A tiny scoring function blends metrics and constraints into a single number to optimize. The engine then runs an iterative ask → evaluate → score → tell loop and records iteration summaries for reproducibility.
 
-This repository tracks the open-source optimization engine. Managed cloud and on-prem packages for regulated teams will layer on the same primitives once we prove out the tracing and optimization stack with design partners.
+## Mental Model
 
-## Status
+- Strategy proposes candidates: `ask(n) -> [Sequence]`
+- Executor runs the Evaluator in parallel and preserves order
+- Evaluator returns `Metrics` per sequence: `objective`, `constraints`, `aux`
+- score_fn computes a scalar score from `Metrics` and duals/constraints
+- Strategy ingests feedback: `tell([(seq, score, metrics)])` and updates its state
+- Optional Lagrange manager updates dual variables from constraint violations
 
-- **Current Phase**: Optimization engine + tracing layer under active development with design partners
-- **Focus**: Model adapters, reward-block graph, reproducible manifests, CLI tooling
-- **Stability**: Pre-alpha — expect breaking changes between commits
-- **Near-Term Milestones**:
-  - **Mid December 2025**: first closed design-partner optimization runs connected to wet-lab programs
-  - **Q1 2026**: tagged open-source release of the engine + manifest tooling
-  - **Q2 2026**: managed cloud and on-prem deployments for regulated workloads
-
-## SDK Scope
-
-1. **Model Inputs**: adapters for plugging foundation or in-house generative models straight into Strand’s search loop
-2. **Search Engines**: interchangeable algorithms (CEM, CMA-ES, genetic, random) tuned for sequence space exploration under constraints
-3. **Reward Blocks**: composable scoring functions (stability, solubility, novelty, manufacturability) plus extension points for lab-specific metrics
-4. **Provenance + CLI**: manifests that log parameters, model versions, and reward graphs so every run is auditable, plus CLI tooling for submitting and tracing jobs
-
-## Quick Start (Pre-Alpha)
+## Quick Start (Surfaces)
 
 ```bash
 # from strand-sdk root
@@ -36,26 +24,55 @@ pip install -e .
 ```
 
 ```python
-from strand.core.optimizer import Optimizer
+from strand.core.sequence import Sequence
 from strand.rewards import RewardBlock
+from strand.engine import (
+    Engine, EngineConfig, Metrics,
+    Strategy, Evaluator, Executor,
+    BoundedConstraint, Direction, Rules, default_score,
+)
+from strand.engine.executors.local import LocalExecutor
+from strand.evaluators.reward_aggregator import RewardAggregator
 
-optimizer = Optimizer(
-    sequences=["MKT..."] ,
-    reward_blocks=[
-        RewardBlock.stability(weight=1.0),
-        RewardBlock.novelty(baseline=["MKP..."], metric="hamming", weight=0.5),
-    ],
-    method="cem",
-    iterations=25,
+# Sequences and rewards (heuristics today)
+sequences = ["MKTAYIAKQRQISFVKSHFSRQDILDLQY"]
+rewards = [RewardBlock.stability(), RewardBlock.novelty(baseline=["MKT..."], weight=0.5)]
+
+# Evaluator and executor
+evaluator: Evaluator = RewardAggregator(reward_blocks=rewards)
+executor: Executor = LocalExecutor(evaluator=evaluator, mode="auto", num_workers="auto", batch_size=64)
+
+# Optional constraints and rules
+constraints = [BoundedConstraint(name="novelty", direction=Direction.GE, bound=0.3)]
+rules = Rules(init={c.name: 0.2 for c in constraints})
+
+# Strategy and engine config (example placeholders)
+class RandomStrategy:  # implements Strategy Protocol
+    ...
+
+config = EngineConfig(iterations=50, population_size=256, seed=1337)
+engine = Engine(
+    config=config,
+    strategy=RandomStrategy(),
+    evaluator=evaluator,
+    executor=executor,
+    score_fn=default_score,  # or a trivial lambda m, r, cs: m.objective
+    constraints=constraints,
+    rules=rules,
 )
 
-results = optimizer.run()
-print(results.top(5))
+results = engine.run()  # surface placeholder today
 ```
 
-## Repo Layout
+## Extending
 
-See `GITHUB_REPO_STRUCTURE.md` in the design workspace for the authoritative target layout. All directories listed there are present here with placeholder implementations, docs, examples, tests, and benchmarks so contributors can iterate per vertical slice.
+- Implement a custom Strategy (ask/tell) with any algorithm
+- Wrap ML models or heuristics in an Evaluator (batched), then scale with an Executor
+- Add constraints by declaring `BoundedConstraint` instances; use `AdditiveLagrange` to enforce them
+
+Reward blocks in `strand/rewards/` remain usable via the `RewardAggregator` evaluator. Current reward blocks are simple heuristics (e.g., hydrophobicity proxy for "stability", polar-residue fraction for "solubility"). The `model` parameter on these blocks is a provenance label only.
+
+**Important:** Constraint names must match `Metrics.constraints` keys; missing keys will be treated as zero (and warned once).
 
 ## Contributing
 

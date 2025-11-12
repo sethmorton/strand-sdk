@@ -3,24 +3,21 @@
 Example pipeline demonstrating the Strand SDK for biological sequence optimization.
 
 This example shows:
-1. Creating reward blocks (stability, solubility, novelty, custom)
-2. Running optimization with different methods
-3. Accessing results and exporting data
-4. Saving the full provenance manifest
+1. Creating reward blocks (stability, solubility, novelty, gc_content)
+2. Running optimization with different strategies (Random, CEM)
+3. Accessing results and iteration statistics
+4. Exporting results
 """
 
 from pathlib import Path
 
-from strand import Optimizer, RewardBlock
 from strand.core.sequence import Sequence
-from strand.rewards.base import RewardContext
-
-
-def custom_scorer(sequence: Sequence, context: RewardContext) -> float:
-    """Custom scoring function: reward sequences starting with 'M' and 'K'."""
-    if sequence.tokens.startswith("MK"):
-        return 1.0
-    return 0.5
+from strand.engine import Engine, EngineConfig, default_score
+from strand.engine.executors.local import LocalExecutor
+from strand.engine.strategies.cem import CEMStrategy
+from strand.engine.strategies.random import RandomStrategy
+from strand.evaluators.reward_aggregator import RewardAggregator
+from strand.rewards import RewardBlock
 
 
 def main() -> None:
@@ -29,97 +26,106 @@ def main() -> None:
     output_dir = Path(__file__).parent / "output"
     output_dir.mkdir(exist_ok=True)
 
-    print("🧬 Strand SDK Example Pipeline\n")  # noqa: T201
+    print("🧬 Strand SDK Example Pipeline (Engine-based)\n")  # noqa: T201
     print("=" * 60)  # noqa: T201
 
-    # 1. Define candidate sequences
-    print("\n1️⃣  Defining candidate sequences...")  # noqa: T201
-    candidates = [
+    # 1. Define baseline sequences
+    print("\n1️⃣  Defining baseline sequences...")  # noqa: T201
+    baseline = [
         "MKTAYIAKQRQISFVKSHFSRQDILDLQY",
         "MKPAYIAKQRQISFVKSHFSRQDILDVQY",
-        "MKTAYIAKQRQISFVKSHFSRQDILDLQT",
-        "MKPAVVAVQRQISFVKSHFSRQDILDLQY",
-        "MKTAYIAKQRQISFVKSHFSRQDILDLQW",
     ]
-    print(f"   Loaded {len(candidates)} sequences")  # noqa: T201
-    for i, seq in enumerate(candidates, 1):
+    print(f"   Loaded {len(baseline)} baseline sequences")  # noqa: T201
+    for i, seq in enumerate(baseline, 1):
         print(f"   {i}. {seq}")  # noqa: T201
 
     # 2. Define reward blocks
     print("\n2️⃣  Defining reward blocks...")  # noqa: T201
-    baseline_sequences = [candidates[0], candidates[1]]
-
-    reward_blocks = [
-        RewardBlock.stability(model="esmfold", threshold=0.8, weight=1.0),
-        RewardBlock.solubility(model="protbert", weight=0.5),
-        RewardBlock.novelty(baseline=baseline_sequences, metric="hamming", weight=0.3),
-        RewardBlock.custom(fn=custom_scorer, weight=0.2),
+    rewards = [
+        RewardBlock.stability(weight=1.0),
+        RewardBlock.solubility(weight=0.5),
+        RewardBlock.novelty(baseline=baseline, weight=0.3),
+        RewardBlock.gc_content(target=0.5, tolerance=0.1, weight=0.2),
     ]
-
-    print(f"   Loaded {len(reward_blocks)} reward blocks:")  # noqa: T201
-    for block in reward_blocks:
+    print(f"   Loaded {len(rewards)} reward blocks:")  # noqa: T201
+    for block in rewards:
         print(f"   - {block.name} (weight: {block.weight})")  # noqa: T201
 
-    # 3. Test different optimization methods
-    methods = ["random", "cem", "ga"]
+    # 3. Test different strategies
+    strategies_config = [
+        ("random", RandomStrategy(
+            alphabet="ACDEFGHIKLMNPQRSTVWY",
+            min_len=20,
+            max_len=35,
+            seed=42,
+        )),
+        ("cem", CEMStrategy(
+            alphabet="ACDEFGHIKLMNPQRSTVWY",
+            min_len=20,
+            max_len=35,
+            seed=42,
+        )),
+    ]
+
     all_results = {}
 
-    for method in methods:
-        print(f"\n3️⃣  Running optimization with method: {method.upper()}")  # noqa: T201
+    for strategy_name, strategy in strategies_config:
+        print(f"\n3️⃣  Running optimization with strategy: {strategy_name.upper()}")  # noqa: T201
         print("-" * 60)  # noqa: T201
 
-        optimizer = Optimizer(
-            sequences=candidates,
-            reward_blocks=reward_blocks,
-            method=method,
+        # Create evaluator and executor
+        evaluator = RewardAggregator(reward_blocks=rewards)
+        executor = LocalExecutor(evaluator=evaluator, mode="auto")
+
+        # Configure engine
+        config = EngineConfig(
             iterations=5,
-            population_size=10,
+            population_size=20,
             seed=42,
-            experiment=f"example_{method}",
+            method=strategy_name,
         )
 
-        results = optimizer.run()
-        all_results[method] = results
+        # Create and run engine
+        engine = Engine(
+            config=config,
+            strategy=strategy,
+            evaluator=evaluator,
+            executor=executor,
+            score_fn=default_score,
+        )
 
-        # Display top results
-        print(f"\n   Top 3 sequences (method={method}):")  # noqa: T201
-        for rank, (seq, score) in enumerate(results.top(3), 1):  # type: ignore[assignment]
-            print(f"   {rank}. {seq.tokens}")  # type: ignore[attr-defined]  # noqa: T201
-            print(f"      Score: {score:.4f}")  # noqa: T201
+        results = engine.run()
+        all_results[strategy_name] = results
 
-        # Export results to output directory
-        json_path = output_dir / f"results_{method}.json"
-        csv_path = output_dir / f"results_{method}.csv"
-        results.export_json(json_path)
-        results.export_csv(csv_path)
-        print("\n   📊 Exported results:")  # noqa: T201
-        print(f"      - JSON: {json_path.name}")  # noqa: T201
-        print(f"      - CSV: {csv_path.name}")  # noqa: T201
+        # Display results
+        if results.best:
+            best_seq, best_score = results.best
+            print(f"\n   Best sequence (score: {best_score:.4f}):")  # noqa: T201
+            print(f"   {best_seq.tokens}")  # noqa: T201
 
-        # Save manifest
-        manifest = results.to_manifest()
-        if manifest:
-            manifest_path = output_dir / f"manifest_{method}.json"
-            manifest.save(manifest_path)
-            print(f"      - Manifest: {manifest_path.name}")  # noqa: T201
+        # Display iteration statistics
+        print(f"\n   Iteration statistics:")  # noqa: T201
+        print(f"   {'Iter':<6} {'Best':<10} {'Mean':<10} {'Std':<10}")  # noqa: T201
+        print("   " + "-" * 36)  # noqa: T201
+        for stat in results.history:
+            print(f"   {stat.iteration:<6} {stat.best:<10.4f} {stat.mean:<10.4f} {stat.std:<10.4f}")  # noqa: T201
 
-    # 4. Compare results
-    print("\n4️⃣  Comparing Results Across Methods")  # noqa: T201
+    # 4. Compare strategies
+    print("\n4️⃣  Comparing Strategies")  # noqa: T201
     print("=" * 60)  # noqa: T201
-    print(f"{'Method':<12} {'Top Score':<12} {'Mean Score':<12}")  # noqa: T201
+    print(f"{'Strategy':<12} {'Best Score':<15} {'Mean Score':<15}")  # noqa: T201
     print("-" * 60)  # noqa: T201
 
-    for method in methods:
-        results = all_results[method]
-        top_score = results.scores[0] if results.scores else 0
-        mean_score = sum(results.scores) / len(results.scores) if results.scores else 0
-        print(f"{method:<12} {top_score:>10.4f}  {mean_score:>10.4f}")  # noqa: T201
+    for strategy_name in [s[0] for s in strategies_config]:
+        results = all_results[strategy_name]
+        if results.best:
+            best_score = results.best[1]
+            mean_scores = [s.mean for s in results.history]
+            mean_score = sum(mean_scores) / len(mean_scores) if mean_scores else 0
+            print(f"{strategy_name:<12} {best_score:>13.4f}  {mean_score:>13.4f}")  # noqa: T201
 
     print("\n" + "=" * 60)  # noqa: T201
     print("✅ Pipeline complete!")  # noqa: T201
-    print(f"\nGenerated files in: {output_dir}")  # noqa: T201
-    print("  - results_*.json/.csv: Ranked sequences and scores")  # noqa: T201
-    print("  - manifest_*.json: Full provenance and metadata")  # noqa: T201
 
 
 if __name__ == "__main__":

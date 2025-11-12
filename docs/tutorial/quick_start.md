@@ -1,10 +1,8 @@
-# Quick Start
+# Quick Start (Surfaces)
 
-This walkthrough shows the smallest possible optimization loop using the current experimental API surface.
+This walkthrough shows the smallest optimization loop with the new engine surfaces. Implementations are landing next; consider this your API preview.
 
 ## Installation
-
-Install from source so you stay on the latest pre-alpha commits:
 
 ```bash
 git clone https://github.com/sethmorton/strand-sdk.git
@@ -12,77 +10,63 @@ cd strand-sdk
 pip install -e .
 ```
 
-## Your First Optimization
-
-Run a simple sequence optimization with built-in reward blocks:
+## Your First Optimization (API sketch)
 
 ```python
-from strand.core.optimizer import Optimizer
+from strand.core.sequence import Sequence
 from strand.rewards import RewardBlock
+from strand.engine import (Engine, EngineConfig, BoundedConstraint, Direction, Rules, default_score)
+from strand.engine.executors.local import LocalExecutor
+from strand.evaluators.reward_aggregator import RewardAggregator
 
-# Define reward blocks
-rewards = [
-    RewardBlock.stability(weight=1.0),
-    RewardBlock.novelty(baseline=["MKTAYIAKQRQISFVKSHFSRQ"], weight=0.5, metric="hamming"),
-]
+# Sequences and rewards
+sequences = ["MKTAYIAKQRQISFVKSHFSRQDILDLQY"]
+rewards = [RewardBlock.stability(), RewardBlock.novelty(baseline=["MKT..."], weight=0.5)]
 
-# Create and run optimizer
-optimizer = Optimizer(
-    sequences=["MKTAYIAKQRQISFVKSHFSRQ"],
-    reward_blocks=rewards,
-    method="cem",
-    iterations=25,
-    population_size=50,
+# Evaluator and executor
+evaluator = RewardAggregator(reward_blocks=rewards)
+executor = LocalExecutor(evaluator=evaluator, mode="auto", num_workers="auto", batch_size=64)
+
+# Optional constraints and rules
+constraints = [BoundedConstraint(name="novelty", direction=Direction.GE, bound=0.3)]
+rules = Rules(init={"novelty": 0.2})
+
+# Strategy placeholder implementing the Strategy Protocol
+class RandomStrategy:
+    ...
+
+config = EngineConfig(iterations=25, population_size=128, seed=1337)
+engine = Engine(
+    config=config,
+    strategy=RandomStrategy(),
+    evaluator=evaluator,
+    executor=executor,
+    score_fn=default_score,  # or: lambda m, r, cs: m.objective
+    constraints=constraints,
+    rules=rules,
 )
 
-results = optimizer.run()
-
-# Examine results
-print("Top 5 sequences:")
-for i, seq in enumerate(results.top(5)):
-    print(f"  {i+1}. {seq}")
-
-print(f"\nTop score: {results.scores[0]:.4f}")
+results = engine.run()  # surface placeholder today
 ```
+
+**Important:** Constraint names must match `Metrics.constraints` keys. Missing keys will be treated as zero and warned once.
 
 ## Next Steps
 
-- 📖 [Core Concepts](./core_concepts.md) — Understand the architecture
-- 🎓 [Tutorials](../index.md#tutorials) — Learn by example
-- 🔧 [API Reference](../api_reference.md) — Explore the full API
-- 💾 [Examples](../../examples/) — Real-world use cases
+- 📖 Mental Model (README) — Understand Strategy/Evaluator/Executor and the loop
+- 🔧 API Reference (coming) — Protocols and dataclasses
+- 💾 Examples (coming) — CEM/GA/CMA‑ES implementations
 
 ## Troubleshooting
 
 ### Import Errors
 
-```python
-ModuleNotFoundError: No module named 'strand'
-```
+Install in development mode from the repo root:
 
-**Solution**: Install in development mode from the repo root:
 ```bash
 pip install -e .
 ```
 
-### Out of Memory
+### Performance
 
-For large populations, consider:
-```python
-optimizer = Optimizer(
-    sequences=sequences,
-    reward_blocks=rewards,
-    method="cem",
-    iterations=50,
-    population_size=32,  # Reduce from default
-    batch_size=4,  # Process in batches
-)
-```
-
-### Slow Performance
-
-- Use `method="random"` for quick iteration during development
-- Simplify reward functions
-- Reduce population size
-
-For more help, check the [FAQ](../faq.md).
+Prefer `num_workers="auto"` and `mode="auto"` on the LocalExecutor. Use threads for GPU models and processes for CPU‑bound evaluators.

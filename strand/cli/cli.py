@@ -1,11 +1,13 @@
-"""Command-line entry point placeholder."""
+"""Command-line entry point placeholder (surfaces only).
+
+The new Engine surfaces are not implemented yet. This CLI stub
+prints a friendly message and exits with a non-zero status.
+"""
 
 from __future__ import annotations
 
 import argparse
-import json
 
-from strand.core.optimizer import Optimizer
 from strand.rewards import RewardBlock
 from strand.utils import get_logger
 
@@ -29,17 +31,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.baseline:
         reward_blocks.append(RewardBlock.novelty(baseline=list(args.baseline)))
 
-    optimizer = Optimizer(
-        sequences=[args.sequence],
-        reward_blocks=reward_blocks,
-        method=args.method,
-        iterations=args.iterations,
-    )
-    results = optimizer.run()
-    top_results = {"top": [(seq.id, score) for seq, score in results.top(3)]}
-    _logger.info("Optimization completed. Results: %s", json.dumps(top_results, indent=2))
-    print(json.dumps(top_results, indent=2))  # noqa: T201  # CLI output is expected
-    return 0
+    _logger.warning("CLI surfaces are placeholders. Use strand.engine Engine programmatically.")
+    _logger.error("CLI not implemented yet. Use strand.engine.Engine with RewardAggregator and LocalExecutor")
+    return 2
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from strand.rewards.base import RewardContext
 from strand.rewards.custom import CustomReward
+from strand.rewards.gc_content import GCContentReward
 from strand.rewards.length_penalty import LengthPenaltyReward
 from strand.rewards.novelty import NoveltyReward
 from strand.rewards.registry import RewardRegistry
@@ -19,11 +20,11 @@ if TYPE_CHECKING:  # pragma: no cover
 
 class RewardBlock:
     @staticmethod
-    def stability(model: str = "esmfold", threshold: float = 0.8, weight: float = 1.0) -> StabilityReward:
+    def stability(model: str = "heuristic", threshold: float = 0.8, weight: float = 1.0) -> StabilityReward:
         return StabilityReward(model=model, threshold=threshold, weight=weight)
 
     @staticmethod
-    def solubility(model: str = "protbert", weight: float = 1.0) -> SolubilityReward:
+    def solubility(model: str = "heuristic", weight: float = 1.0) -> SolubilityReward:
         return SolubilityReward(model=model, weight=weight)
 
     @staticmethod
@@ -33,6 +34,26 @@ class RewardBlock:
     @staticmethod
     def length_penalty(target_length: int, tolerance: int = 5, weight: float = 1.0) -> LengthPenaltyReward:
         return LengthPenaltyReward(target_length=target_length, tolerance=tolerance, weight=weight)
+
+    @staticmethod
+    def gc_content(target: float = 0.5, tolerance: float = 0.1, weight: float = 1.0) -> GCContentReward:
+        """Create a GC content reward block.
+
+        Parameters
+        ----------
+        target : float
+            Target GC content ratio (0.0 to 1.0), default 0.5 (50%).
+        tolerance : float
+            Tolerance band around target (0.0 to 1.0), default 0.1 (±10%).
+        weight : float
+            Weight multiplier for the reward score, default 1.0.
+
+        Returns
+        -------
+        GCContentReward
+            Configured reward block for GC content optimization.
+        """
+        return GCContentReward(target=target, tolerance=tolerance, weight=weight)
 
     @staticmethod
     def custom(

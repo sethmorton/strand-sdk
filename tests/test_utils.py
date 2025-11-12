@@ -5,7 +5,7 @@ from strand.utils import ensure_sequences, hamming_distance
 
 
 def test_ensure_sequences_rejects_invalid_tokens():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="invalid tokens"):
         ensure_sequences(["ABZ"])  # Z invalid for default alphabet
 
 

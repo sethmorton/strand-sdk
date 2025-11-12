@@ -9,7 +9,9 @@ POLAR = set("STNQ")
 
 
 class SolubilityReward(BaseRewardBlock):
-    def __init__(self, model: str = "protbert", weight: float = 1.0):
+    def __init__(self, model: str = "heuristic", weight: float = 1.0):
+        # "solubility" here is a polar-residue ratio heuristic, not a learned model.
+        # The model parameter is a label for provenance only.
         super().__init__(name=f"solubility:{model}", weight=weight)
 
     def _score(self, sequence: Sequence, context: RewardContext) -> float:

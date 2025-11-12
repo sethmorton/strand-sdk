@@ -33,22 +33,34 @@ rewards = (
 )
 ```
 
-### 3. **Optimizer**
+### 3. **Engine & Strategies**
 
-An `Optimizer` runs a search algorithm (CEM, CMA-ES, genetic algorithm) to find sequences that maximize combined reward scores.
+The `Engine` runs a search algorithm (CEM, CMA-ES, genetic algorithm, random) to find sequences that maximize combined objective and constraint scores.
 
 ```python
-from strand.core.optimizer import Optimizer
+from strand.engine import Engine, EngineConfig
+from strand.engine.strategies import RandomStrategy
+from strand.evaluators.reward_aggregator import RewardAggregator
+from strand.engine.executors.local import LocalExecutor
 
-optimizer = Optimizer(
-    sequences=["MKT..."],
-    reward_blocks=[reward],
-    method="cem",
-    iterations=50,
-    population_size=100,
+# Create a strategy (e.g., RandomStrategy, CEMStrategy)
+strategy = RandomStrategy(alphabet="ACDEFGHIKLMNPQRSTVWY", min_len=20, max_len=30, seed=42)
+
+# Create an evaluator and executor
+evaluator = RewardAggregator(reward_blocks=[reward])
+executor = LocalExecutor(evaluator=evaluator)
+
+# Configure and run the engine
+config = EngineConfig(iterations=50, population_size=100, seed=42)
+engine = Engine(
+    config=config,
+    strategy=strategy,
+    evaluator=evaluator,
+    executor=executor,
+    score_fn=default_score,
 )
 
-results = optimizer.run()
+results = engine.run()
 ```
 
 ### 4. **Results**

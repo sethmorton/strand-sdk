@@ -1,7 +1,11 @@
-"""Core primitives for Strand optimizers."""
+"""Core primitives.
 
-from .optimizer import Optimizer
+This module now exposes only low-level, stable types used across the SDK. The
+legacy Optimizer facade has been removed in favor of the new engine surfaces
+under ``strand.engine``.
+"""
+
 from .results import OptimizationResults
 from .sequence import Sequence
 
-__all__ = ["Optimizer", "OptimizationResults", "Sequence"]
+__all__ = ["OptimizationResults", "Sequence"]

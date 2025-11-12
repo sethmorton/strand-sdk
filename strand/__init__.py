@@ -1,10 +1,15 @@
-"""Strand SDK public interface."""
+"""Strand SDK public interface (surfaces only).
 
-from .core.optimizer import Optimizer
-from .core.results import OptimizationResults
+Use the unified Engine surface under ``strand.engine``. Rewards remain available
+under ``strand.rewards``.
+"""
+
+from __future__ import annotations
+
 from .rewards import RewardBlock
 
-Results = OptimizationResults
+__all__ = [
+    "RewardBlock",
+]
 
-__all__ = ["Optimizer", "OptimizationResults", "Results", "RewardBlock"]
-__version__ = "0.1.0a0"
+__version__ = "0.2.0a0"

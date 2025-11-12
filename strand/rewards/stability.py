@@ -9,7 +9,9 @@ HYDROPHOBIC = set("AILMFWYV")
 
 
 class StabilityReward(BaseRewardBlock):
-    def __init__(self, model: str = "esmfold", threshold: float = 0.8, weight: float = 1.0):
+    def __init__(self, model: str = "heuristic", threshold: float = 0.8, weight: float = 1.0):
+        # "stability" here is a hydrophobicity-derived heuristic, not a learned model.
+        # The model parameter is a label for provenance only.
         super().__init__(name=f"stability:{model}", weight=weight)
         self._threshold = threshold
 

@@ -24,5 +24,6 @@ def test_ga_strategy_tell_updates_best():
     ]
     ga.tell(items)
     best = ga.best()
-    assert best is not None and best[1] == 0.8
+    assert best is not None
+    assert best[1] == 0.8
 

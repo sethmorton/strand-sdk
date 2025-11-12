@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence as TypingSequence
 from dataclasses import dataclass
-from typing import Sequence as TypingSequence
 
 from strand.core.sequence import Sequence
 from strand.engine.interfaces import Evaluator

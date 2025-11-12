@@ -9,6 +9,7 @@ Inspired by portfolio/ensemble approaches in optimization.
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
@@ -42,6 +43,10 @@ class HybridStrategy(Strategy):
     _best_score: float = field(default=float("-inf"), init=False, repr=False)
     _strategy_scores: list[float] = field(default_factory=list, init=False, repr=False)
     _caps: StrategyCaps = field(init=False, repr=False)
+    _last_sequences: list[list[Sequence]] = field(default_factory=list, init=False, repr=False)
+    _pending_sequence_map: dict[tuple[str, str], deque[int]] = field(
+        default_factory=dict, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         """Initialize strategy ensemble."""
@@ -54,6 +59,8 @@ class HybridStrategy(Strategy):
             )
         # Initialize strategy scores for weighted selection
         self._strategy_scores = [0.0] * len(self.strategies)
+        self._last_sequences = [[] for _ in self.strategies]
+        self._pending_sequence_map = {}
         self._refresh_caps()
 
     def ask(self, n: int) -> list[Sequence]:
@@ -71,20 +78,30 @@ class HybridStrategy(Strategy):
         """
         if self.selection_method == "round-robin":
             # Rotate through strategies
-            strategy = self.strategies[self._strategy_idx % len(self.strategies)]
+            strategy_idx = self._strategy_idx % len(self.strategies)
+            strategy = self.strategies[strategy_idx]
             self._strategy_idx += 1
-            return strategy.ask(n)
+
+            sequences = list(strategy.ask(n))
+            sequences_by_strategy = [[] for _ in self.strategies]
+            sequences_by_strategy[strategy_idx] = sequences
+            self._register_sequences(sequences_by_strategy)
+            return sequences
 
         if self.selection_method == "best-of-generation":
             # Get candidates from all strategies
-            candidates = []
+            candidates: list[Sequence] = []
             candidates_per_strategy = n // len(self.strategies)
             remainder = n % len(self.strategies)
 
+            sequences_by_strategy: list[list[Sequence]] = [[] for _ in self.strategies]
             for i, strategy in enumerate(self.strategies):
                 count = candidates_per_strategy + (1 if i < remainder else 0)
-                candidates.extend(strategy.ask(count))
+                sequences = list(strategy.ask(count))
+                sequences_by_strategy[i] = sequences
+                candidates.extend(sequences)
 
+            self._register_sequences(sequences_by_strategy)
             return candidates
 
         if self.selection_method == "weighted":
@@ -92,12 +109,19 @@ class HybridStrategy(Strategy):
             total_score = sum(max(0.01, s) for s in self._strategy_scores)
             weights = [max(0.01, s) / total_score for s in self._strategy_scores]
 
-            candidates = []
+            generated: list[tuple[Sequence, int]] = []
+            sequences_by_strategy: list[list[Sequence]] = [[] for _ in self.strategies]
             for i, strategy in enumerate(self.strategies):
                 count = max(1, int(n * weights[i]))
-                candidates.extend(strategy.ask(count))
+                sequences = list(strategy.ask(count))
+                generated.extend((sequence, i) for sequence in sequences)
 
-            return candidates[:n]
+            selected = generated[:n]
+            for sequence, idx in selected:
+                sequences_by_strategy[idx].append(sequence)
+
+            self._register_sequences(sequences_by_strategy)
+            return [sequence for sequence, _ in selected]
 
         raise ValueError(f"Unknown selection_method: {self.selection_method}")
 
@@ -118,9 +142,36 @@ class HybridStrategy(Strategy):
                 self._best_score = score
                 self._best_sequence = seq
 
-        # Tell all strategies
-        for strategy in self.strategies:
-            strategy.tell(items)
+        # Route results back to generating strategies when possible
+        if not any(self._last_sequences):
+            for strategy in self.strategies:
+                strategy.tell(items)
+            return
+
+        items_by_strategy: list[list[tuple[Sequence, float, Metrics]]] = [
+            [] for _ in self.strategies
+        ]
+        for seq, score, metrics in items:
+            key = (seq.id, seq.tokens)
+            indices = self._pending_sequence_map.get(key)
+            if not indices:
+                for strategy in self.strategies:
+                    strategy.tell(items)
+                self._pending_sequence_map.clear()
+                self._last_sequences = [[] for _ in self.strategies]
+                return
+
+            strategy_idx = indices.popleft()
+            items_by_strategy[strategy_idx].append((seq, score, metrics))
+            if not indices:
+                del self._pending_sequence_map[key]
+
+        for strategy, strategy_items in zip(self.strategies, items_by_strategy):
+            if strategy_items:
+                strategy.tell(strategy_items)
+
+        self._pending_sequence_map.clear()
+        self._last_sequences = [[] for _ in self.strategies]
 
         # Update strategy scores for weighted selection
         if self.selection_method == "weighted":
@@ -191,6 +242,7 @@ class HybridStrategy(Strategy):
         """
         self.strategies.append(strategy)
         self._strategy_scores.append(0.0)
+        self._last_sequences.append([])
         self._refresh_caps()
 
     def remove_strategy(self, index: int) -> None:
@@ -207,6 +259,7 @@ class HybridStrategy(Strategy):
             raise ValueError("Cannot remove the last strategy")
         self.strategies.pop(index)
         self._strategy_scores.pop(index)
+        self._last_sequences.pop(index)
         self._refresh_caps()
 
     def get_strategy_performance(self) -> list[tuple[str, float]]:
@@ -242,3 +295,13 @@ class HybridStrategy(Strategy):
             max_tokens_per_batch=max_tokens,
             prefers_autocast=not disable_autocast,
         )
+
+    def _register_sequences(self, sequences_by_strategy: list[list[Sequence]]) -> None:
+        self._last_sequences = [list(seqs) for seqs in sequences_by_strategy]
+        self._pending_sequence_map = {}
+        for idx, seqs in enumerate(self._last_sequences):
+            for seq in seqs:
+                key = (seq.id, seq.tokens)
+                if key not in self._pending_sequence_map:
+                    self._pending_sequence_map[key] = deque()
+                self._pending_sequence_map[key].append(idx)

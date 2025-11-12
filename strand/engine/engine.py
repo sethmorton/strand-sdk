@@ -11,9 +11,11 @@ import math
 import time
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
+from typing import Protocol, TYPE_CHECKING
 
 from strand.core.sequence import Sequence
 from strand.engine.constraints import BoundedConstraint
+from strand.engine.constraints.dual import DualVariableSet
 from strand.engine.interfaces import Evaluator, Executor, Strategy
 from strand.engine.rules import Rules
 from strand.engine.runtime import (
@@ -26,6 +28,30 @@ from strand.engine.runtime import (
 from strand.engine.types import Metrics
 
 ScoreFn = Callable[[Metrics, Mapping[str, float], list[BoundedConstraint]], float]
+
+
+if TYPE_CHECKING:  # pragma: no cover - import heavy modules lazily
+    from torch.utils.data import DataLoader
+
+    class SupportsSFTDataset(Protocol):
+        def train_loader(
+            self,
+            batch_size: int = 32,
+            shuffle: bool = True,
+            num_workers: int = 0,
+        ) -> DataLoader: ...
+else:  # pragma: no cover - runtime fallbacks
+    class SupportsSFTDataset(Protocol):  # type: ignore[redeclaration]
+        def train_loader(self, batch_size: int = 32, shuffle: bool = True, num_workers: int = 0): ...
+
+
+@dataclass(frozen=True, slots=True)
+class SFTConfig:
+    """Configuration for supervised warm-starts."""
+
+    dataset: SupportsSFTDataset
+    epochs: int = 1
+    batch_size: int | None = None
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -69,6 +95,7 @@ class IterationStats:
     errors: int
     rules: Mapping[str, float]
     violations: Mapping[str, float]
+    dual_weights: Mapping[str, float]
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +132,8 @@ class Engine:
         score_fn: ScoreFn,
         constraints: list[BoundedConstraint] | None = None,
         rules: Rules | None = None,
+        sft: SFTConfig | None = None,
+        dual_manager: DualVariableSet | None = None,
     ) -> None:
         self._config = config
         self._strategy = strategy
@@ -117,6 +146,16 @@ class Engine:
         self._device_config = config.device or DeviceConfig()
         self._strategy_caps = resolve_strategy_caps(strategy)
         self._strategy_context: StrategyContext | None = None
+        self._sft_config = sft
+        self._warm_started = False
+        self._dual_manager = dual_manager
+        self._dual_weights: dict[str, float] = {}
+
+        if self._strategy_caps.needs_sft_dataset and self._sft_config is None:
+            _LOGGER.warning(
+                "Strategy %s declared needs_sft_dataset but no SFTConfig was provided",
+                type(strategy).__name__,
+            )
 
     def run(self) -> EngineResults:
         """Execute the optimization loop and return results."""
@@ -167,6 +206,9 @@ class Engine:
             "stopped_early": len(history) < self._config.iterations,
         }
 
+        if self._dual_manager is not None:
+            summary["dual_summary"] = self._dual_manager.summary()
+
         if best_overall is not None:
             summary["best_score"] = best_overall[1]
 
@@ -191,6 +233,8 @@ class Engine:
                 break
 
             rules_snapshot = dict(self._rules.values())
+            if self._dual_weights:
+                rules_snapshot.update(self._dual_weights)
             errors = 0
             timeouts = 0
 
@@ -268,6 +312,13 @@ class Engine:
                 for name, values in violation_signals.items()
             }
 
+            dual_weights_snapshot = dict(self._dual_weights)
+            if self._dual_manager is not None:
+                dual_weights_snapshot = self._dual_manager.update_all(violations_mean)
+                self._dual_weights = dict(dual_weights_snapshot)
+                if dual_weights_snapshot:
+                    _LOGGER.info("Dual weights updated: %s", dual_weights_snapshot)
+
             stats = IterationStats(
                 iteration=iteration,
                 best=best_iter,
@@ -279,6 +330,7 @@ class Engine:
                 errors=errors,
                 rules=rules_snapshot,
                 violations=violations_mean,
+                dual_weights=dual_weights_snapshot,
             )
 
             yield stats
@@ -319,8 +371,32 @@ class Engine:
         if callable(prepare_fn):
             prepare_fn(context)
 
+        self._maybe_warm_start(context)
         self._strategy_context = context
         return context
+
+    def _maybe_warm_start(self, context: StrategyContext) -> None:
+        if self._warm_started or self._sft_config is None:
+            return
+
+        warm_start_fn = getattr(self._strategy, "warm_start", None)
+        if not callable(warm_start_fn):
+            _LOGGER.info("Strategy %s does not implement warm_start; skipping SFT", type(self._strategy).__name__)
+            self._warm_started = True
+            return
+
+        try:
+            warm_start_fn(
+                dataset=self._sft_config.dataset,
+                epochs=self._sft_config.epochs,
+                batch_size=self._sft_config.batch_size,
+                context=context,
+            )
+        except TypeError:
+            # Fall back to positional signature for legacy implementations
+            warm_start_fn(self._sft_config.dataset, self._sft_config.epochs)  # type: ignore[misc]
+
+        self._warm_started = True
 
     def _maybe_train(self, items: list[tuple[Sequence, float, Metrics]]) -> None:
         if not items:

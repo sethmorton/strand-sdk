@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from strand.engine.interfaces import Executor, Evaluator
-from strand.engine.runtime import BatchConfig, DeviceConfig
+from strand.engine.runtime import DeviceConfig, ModelRuntime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -149,7 +149,7 @@ class ExecutorFactory:
 
         return LocalExecutor(
             evaluator=evaluator,
-            num_workers=config.get("num_workers", 1),
+            batch_size=config.get("batch_size", 64),
         )
 
     @classmethod
@@ -170,11 +170,13 @@ class ExecutorFactory:
         Executor
             PoolExecutor instance.
         """
-        from strand.engine.executors.pool import PoolExecutor
+        from strand.engine.executors.pool import LocalPoolExecutor
 
-        return PoolExecutor(
+        return LocalPoolExecutor(
             evaluator=evaluator,
-            num_workers=config.get("num_workers", 4),
+            mode=config.get("mode", "auto"),
+            num_workers=config.get("num_workers", "auto"),
+            batch_size=config.get("batch_size", 64),
         )
 
     @classmethod
@@ -197,24 +199,18 @@ class ExecutorFactory:
         """
         from strand.engine.executors.torch import TorchExecutor
 
-        device_config = None
-        if "device" in config or "mixed_precision" in config:
-            device_config = DeviceConfig(
-                target=config.get("device", "cpu"),
-                mixed_precision=config.get("mixed_precision", "no"),
-            )
-
-        batch_config = None
-        if "batch_size" in config or "max_tokens" in config:
-            batch_config = BatchConfig(
-                eval_size=config.get("batch_size", 64),
-                max_tokens=config.get("max_tokens"),
-            )
+        device_cfg = DeviceConfig(
+            target=config.get("device", "cpu"),
+            mixed_precision=config.get("mixed_precision", "no"),
+            gradient_accumulation_steps=config.get("grad_accum", 1),
+        )
+        runtime = ModelRuntime.build(device_cfg)
 
         return TorchExecutor(
             evaluator=evaluator,
-            device_config=device_config,
-            batch_config=batch_config,
+            runtime=runtime,
+            batch_size=config.get("batch_size", 64),
+            max_tokens_per_batch=config.get("max_tokens"),
         )
 
     @classmethod
@@ -309,4 +305,3 @@ __all__ = [
     "ExecutorConfig",
     "ExecutorFactory",
 ]
-

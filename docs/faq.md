@@ -1,16 +1,22 @@
 # FAQ
 
 ### What stage is Strand in right now?
-Pre-alpha. We are still building the optimization engine and tracing layer with a small set of design partners. Expect breaking API changes while we tighten up the manifest format and optimizer interfaces.
+Alpha. The engine, strategies, evaluators, datasets, logging utilities, supervised warm-start hooks, and CLI orchestration are ready for local experimentation. Expect some API movement while Ctrl-DNA parity solidifies.
 
 ### When can I run real optimization jobs that feed a wet lab?
-The first closed-loop experiments with design partners are planned for **mid December 2025**. After those runs land, we plan to cut a tagged open-source release in **Q1 2026** so anyone can reproduce the workflow on their own infrastructure.
+You can run simulated Ctrl-DNA loops today (Random/CEM/RLPolicy + GC/Enformer/TFBS rewards). Wet-lab integrations and verified HyenaDNA checkpoints are being vetted with partners through early 2026; tagged open-source releases will follow those runs.
 
 ### Which Python versions are supported?
-Python 3.11+ during the design-partner phase. Broader version coverage will follow once the API settles.
+Python 3.11+ during the alpha period. The tooling uses `typing` features and dataclass slots that require 3.11.
 
 ### How will the open-source SDK and managed offering relate?
-The core optimization engine, reward blocks, and manifest schema live in this repository and will remain open-source. Managed cloud and on-prem deployments will layer on authentication, workload orchestration, and compliance features for teams that need them.
+The open-source SDK (this repo) includes strategies, evaluators, datasets, manifests, and logging. The managed service layers on cluster orchestration, data governance, and workflow automation. Anything related to model training and reward math will remain OSS.
 
 ### What makes Strand different from other sequence-design tools?
-Strand treats optimization + tracing as the neutral layer between many generative models and the wet lab. You plug in whatever model generated your sequences, define constraints via reward blocks, and Strand searches sequence space while generating a provenance trail you can hand to regulators or collaborators.
+Strand treats optimization + tracing as the neutral layer between many generative models and the wet lab. You plug in any sequence generator or foundation model, define constraints as reward blocks, and Strand runs iterative ask→evaluate→score→tell loops while emitting manifests/MLflow runs for reproducibility.
+
+### Where is the CLI?
+Use `strand run path/to/config.yaml` to launch runs directly from declarative configs. The CLI wires up strategies, rewards, executors, devices, SFT datasets, and dual managers without writing new scripts.
+
+### Does the RL policy support supervised warm-starts?
+Yes. Pass `Engine(..., sft=SFTConfig(dataset, epochs, batch_size))` and `Engine` will call `strategy.warm_start(...)` before the RL loop. `RLPolicyStrategy` ships with a built-in warm-start implementation that logs SFT metrics via `MLflowTracker`.

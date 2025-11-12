@@ -152,6 +152,22 @@ class MLflowTracker:
         """
         mlflow.log_artifact(str(filepath))
 
+    def log_sft_metrics(self, epoch: int, *, loss: float, accuracy: float, kl: float | None = None) -> None:
+        """Log supervised fine-tuning metrics."""
+
+        metrics = {
+            "sft_loss": loss,
+            "sft_accuracy": accuracy,
+        }
+        if kl is not None:
+            metrics["sft_kl"] = kl
+        mlflow.log_metrics(metrics, step=epoch)
+
+    def log_sft_checkpoint(self, path: Path | str) -> None:
+        """Log a fine-tuning checkpoint artifact."""
+
+        mlflow.log_artifact(str(path))
+
     @staticmethod
     def get_best_run(experiment_name: str) -> dict[str, Any] | None:
         """Get the best run from an experiment.
@@ -206,4 +222,3 @@ class MLflowTracker:
         )
 
         return [runs.iloc[i].to_dict() for i in range(min(top_n, len(runs)))]
-

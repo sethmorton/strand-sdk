@@ -1,8 +1,15 @@
 # Examples Directory
 
-1. `basic_optimization.py`: Minimal run with stability + novelty.
-2. `protein_stability_novelty.py`: Demonstrates multiple reward blocks.
-3. `dna_multi_objective.py`: Shows DNA sequences and length penalty.
-4. `custom_reward_function.py`: Custom callable block.
-5. `export_and_reproducibility.py`: Persist manifests/results.
-6. `cloud_api_integration.py`: Placeholder for external API usage.
+All scripts live under `examples/`. Run them from the repo root after installing the SDK in editable mode.
+
+| Script | What it demonstrates |
+| --- | --- |
+| `basic_optimization.py` | Legacy heuristic rewards (stability, novelty) across Random, CEM, GA. Good for quick smoke tests. |
+| `engine_basic.py` | Minimal engine loop using GC content + LocalExecutor. Mirrors the Quick Start but with CLI arguments. |
+| `engine_with_tracking.py` | Adds MLflow tracking, manifest exports, and checkpoint logging to the basic run. |
+| `engine_varlen_cmaes.py` | Demonstrates CMA-ES for variable-length sequences, including how to clamp candidates and update length statistics. |
+| `engine_ctrl_dna_hybrid.py` | Hybrid coordination of RLPolicy + evolutionary strategies, logging dual variables and mock constraint violations. |
+
+Tips:
+- Use `python examples/engine_with_tracking.py --help` to see runtime flags.
+- Point the examples at your own FASTA/CSV files once comfortable; all reward/evaluator hooks are surfaced via arguments so nothing is hard-coded.

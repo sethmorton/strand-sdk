@@ -62,8 +62,8 @@ class Strategy(Protocol):
     - ``strategy_caps() -> StrategyCaps``: Declare capabilities and requirements.
     - ``prepare(context: StrategyContext) -> None``: Initialize strategy with
       device/batch config and optional runtime. Called once before ask/tell loop.
-    - ``warm_start(dataset, epochs) -> None``: Pre-train on supervised data
-      before RL loop (for fine-tuning strategies).
+    - ``warm_start(dataset, *, epochs=1, batch_size=None, context=None, **kwargs) -> None``:
+      Optional supervised pre-training hook invoked once before the RL loop.
     """
 
     def ask(self, n: int) -> list[Sequence]:

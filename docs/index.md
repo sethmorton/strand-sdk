@@ -2,13 +2,15 @@
 
 Strand is a production-ready optimization engine for biological sequences. Compose strategies (search algorithms), rewards (objectives), and executors (parallelization) to explore sequence space under constraints.
 
-**Designed with progressive disclosure**: start simple, discover advanced features as needed.
+**Designed with progressive disclosure**: start with a random strategy plus GC content, then grow into RL, dual variables, and foundation models when you need them.
 
 ## Quick Links
 
-- **New to Strand?** → [Getting Started](./getting_started.md) (5 minutes)
-- **Quick reference** → [Quick Start](./tutorial/quick_start.md)
-- **Deep dive** → [Core Concepts](./tutorial/core_concepts.md)
+- **Install + run** → [Getting Started](./getting_started.md)
+- **Minimal code sample** → [Quick Start](./tutorial/quick_start.md)
+- **Architecture & runtime context** → [StrategyContext guide](./architecture/strategy_context.md)
+- **Datasets & preprocessing** → [SequenceDataset overview](./data/sequence_datasets.md)
+- **Ctrl-DNA walkthrough** → [Full pipeline tutorial](./tutorial/ctrl_dna_pipeline.md)
 
 ## Core Concepts
 
@@ -22,22 +24,25 @@ Strand is a production-ready optimization engine for biological sequences. Compo
 
 ## Features
 
-✅ **6 strategies**: Random, CEM, GA, CMA-ES, RL Policy, Hybrid  
-✅ **Basic rewards**: GC content, length, novelty, stability  
-✅ **Advanced rewards**: Enformer (cell-type activity), TFBS (binding sites)  
-✅ **Foundation models**: HyenaDNA with pluggable policy heads  
-✅ **RL support**: SFT warm-start, policy gradients, KL regularization  
-✅ **Adaptive constraints**: Dual variable managers for feasibility  
-✅ **Full reproducibility**: Manifests, checkpoints, MLflow integration  
+✅ **Strategies**: Random, CEM, GA, CMA-ES, RL Policy, Hybrid (each declares `StrategyCaps`)  
+✅ **Device-aware runtimes**: `StrategyContext` hands your strategy `ModelRuntime`, `DeviceConfig`, and `BatchConfig` when needed  
+✅ **Reward blocks**: GC content, novelty, stability + advanced Enformer and TFBS correlation modules  
+✅ **Foundation models**: HyenaDNA loader + policy head implementations ready for custom RL loops  
+✅ **Datasets**: `SequenceDataset` for FASTA/CSV/JSON + Ctrl-DNA dataset downloader script  
+✅ **Constraints**: CBROP-inspired `DualVariableManager` with logging helpers  
+✅ **CLI + Reproducibility**: `strand run` configs, MLflow tracker, manifests, Hyena/Enformer examples  
 
 ## Navigation
 
-- [Getting Started](./getting_started.md) - Installation & first run
-- [Progressive Disclosure](./PROGRESSIVE_DISCLOSURE.md) - Self-paced learning path
-- [API Reference](./api_reference.md) - All modules and classes
-- [Reward Blocks](./reward_blocks.md) - Available scoring functions
-- [Optimization Methods](./optimization_methods.md) - Search algorithms
-- [FAQ](./faq.md) - Common questions
+- [Getting Started](./getting_started.md) — Installation & first run
+- [Quick Start](./tutorial/quick_start.md) — Minimal code sample
+- [Core Concepts](./tutorial/core_concepts.md) — Mental model + manifests
+- [StrategyContext](./architecture/strategy_context.md) — Runtime/device hand-off
+- [Sequence Datasets](./data/sequence_datasets.md) — SFT-ready data formats
+- [Reward Blocks](./reward_blocks.md) — Scoring modules & dependencies
+- [Optimization Methods](./optimization_methods.md) — Strategy cheat sheet
+- [Examples](./examples.md) — Script summaries
+- [FAQ](./faq.md) — Common questions & roadmap
 
 ## Philosophy
 

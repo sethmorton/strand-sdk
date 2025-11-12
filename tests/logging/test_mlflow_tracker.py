@@ -64,6 +64,7 @@ class TestMLflowTracker:
                 errors=0,
                 rules={},
                 violations={},
+                dual_weights={},
             )
 
             tracker.log_iteration_stats(0, stats)
@@ -102,3 +103,24 @@ class TestMLflowTracker:
 
             tracker.end_run()
 
+    def test_log_sft_metrics(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tracker = MLflowTracker(
+                experiment_name="test_exp",
+                tracking_uri=str(Path(tmpdir) / "mlruns"),
+            )
+            tracker.start_run("sft_metrics")
+            tracker.log_sft_metrics(epoch=0, loss=0.5, accuracy=0.9, kl=0.1)
+            tracker.end_run()
+
+    def test_log_sft_checkpoint(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tracker = MLflowTracker(
+                experiment_name="test_exp",
+                tracking_uri=str(Path(tmpdir) / "mlruns"),
+            )
+            checkpoint = Path(tmpdir) / "model.pt"
+            checkpoint.write_text("checkpoint")
+            tracker.start_run("sft_ckpt")
+            tracker.log_sft_checkpoint(checkpoint)
+            tracker.end_run()

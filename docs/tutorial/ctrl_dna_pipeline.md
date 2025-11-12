@@ -1,370 +1,185 @@
-# Ctrl-DNA End-to-End Pipeline Tutorial
+# Ctrl-DNA Pipeline (Alpha Status)
 
-This guide walks through a complete Ctrl-DNA workflow: supervised fine-tuning (SFT) warm-start followed by constrained RL optimization with dual variable management.
+This tutorial assembles the Ctrl-DNA building blocks that already exist in the SDK: HyenaDNA loaders, SequenceDataset utilities, advanced reward blocks (Enformer + TFBS), RL strategies, and dual-variable logging. It also calls out what is **not** finished yet so you have an accurate picture.
 
-## Overview
+## Pipeline at a Glance
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  1. Load Foundation Model (HyenaDNA)                            │
-│     - Tokenizer + autoregressive backbone                       │
-│     - Policy head (per-position, HyenaDNA, or Transformer)      │
-└──────────────────┬──────────────────────────────────────────────┘
-                   │
-┌──────────────────▼──────────────────────────────────────────────┐
-│  2. Supervised Fine-Tuning (Optional)                           │
-│     - Load training dataset (FASTA/CSV with labels)             │
-│     - warm_start(): Pre-train policy on supervised data         │
-│     - Checkpoint best model                                      │
-└──────────────────┬──────────────────────────────────────────────┘
-                   │
-┌──────────────────▼──────────────────────────────────────────────┐
-│  3. Constrained RL Loop                                         │
-│     - ask(): Generate sequences (autoregressive sampling)       │
-│     - evaluate: Score with reward blocks + constraints          │
-│     - tell(): Update policy (REINFORCE + KL regularization)     │
-│     - Update dual variables for constraint management           │
-└──────────────────┬──────────────────────────────────────────────┘
-                   │
-┌──────────────────▼──────────────────────────────────────────────┐
-│  4. Evaluation & Deployment                                    │
-│     - Export best sequences and model                           │
-│     - Log results to MLflow                                     │
-│     - Create reproducible manifest                              │
-└─────────────────────────────────────────────────────────────────┘
-```
+1. **Load a foundation model** (HyenaDNA tokenizer + autoregressive backbone)
+2. **Prepare a dataset** (FASTA/CSV/JSON via `SequenceDataset` or the Ctrl-DNA downloader script)
+3. **Stack rewards** (Enformer + TFBS + heuristics)
+4. **Configure dual variables & constraints**
+5. **Run RLPolicyStrategy** with evaluator + executor inside `Engine`
+6. **Log results** via MLflow + manifests
 
-## Step 1: Configuration
+A reference config lives at `configs/examples/ctrl_dna/hyenadna_rl.yaml`. Use it as a starting point for your own Hydra/OmegaConf workflows.
 
-Create a YAML config file combining all stages:
-
-```yaml
-# configs/ctrl_dna_full.yaml
-engine:
-  iterations: 100
-  population_size: 64
-  seed: 42
-
-strategy:
-  type: "rl-policy"
-  alphabet: "ACGT"
-  min_len: 50
-  max_len: 500
-  policy_head:
-    type: "hyenadna"
-    model_id: "hyena/hyenadna-tiny-1k"
-    freeze_backbone: true
-
-device:
-  target: "cuda"
-  mixed_precision: "bf16"
-
-batch:
-  eval_size: 32
-  train_size: 8
-  max_tokens: 1024
-
-# SFT warm-start configuration
-sft:
-  enabled: true
-  dataset_path: "data/promoters.fasta"
-  epochs: 3
-  val_split: 0.1
-
-# Reward blocks and constraints
-evaluation:
-  reward_blocks:
-    - type: "enformer"
-      weight: 0.5
-      cell_types: ["hNSPC"]
-    - type: "gc_content"
-      weight: 0.3
-      target: 0.5
-  
-  constraints:
-    - name: "off_target"
-      min: 0.0
-      max: 0.2  # Minimize off-target activity
-
-logging:
-  mlflow_uri: "local"
-  experiment: "ctrl-dna-full"
-  checkpoint_dir: "./checkpoints/ctrl-dna-best"
-```
-
-## Step 2: Load Foundation Model
+## 1. Load HyenaDNA
 
 ```python
+import torch
 from strand.models.hyenadna import load_hyenadna_from_hub
-from strand.engine.runtime import DeviceConfig
 
-# Load HyenaDNA
-config = load_hyenadna_from_hub(
+hyena = load_hyenadna_from_hub(
     model_name="hyenadna-tiny-1k",
     device="cuda",
     dtype=torch.bfloat16,
 )
 
-print(f"Model vocab_size: {config.vocab_size}")
-print(f"Max context: {config.max_seq_len}")
+tokenizer = hyena.tokenizer
+model = hyena.model
+print("Max context:", hyena.config.max_seq_len)
 ```
 
-## Step 3: Optional Supervised Fine-Tuning (SFT)
+You can also load local checkpoints with `load_hyenadna_from_checkpoint("path/to/ckpt")`.
 
-### Why SFT?
-
-- **Warm-start policy**: Initialize policy with real sequence patterns
-- **Reduce RL variance**: Policy starts well-calibrated instead of random
-- **Faster convergence**: RL loop can focus on optimization vs. learning basics
-- **Constraint awareness**: Pre-train on diverse, realistic sequences
-
-### SFT Workflow
+## 2. Prepare Sequence Data
 
 ```python
+from pathlib import Path
 from strand.data.sequence_dataset import SequenceDataset, SequenceDatasetConfig
-from strand.engine.strategies import RLPolicyStrategy
-from strand.engine.runtime import DeviceConfig, build_strategy_context
 
-# Configure dataset
-dataset_config = SequenceDatasetConfig(
-    data_path="data/promoters.fasta",
-    tokenizer=model.tokenizer,
+config = SequenceDatasetConfig(
+    data_path=Path("data/promoters/mock_promoters.fasta"),
+    tokenizer=tokenizer,
     max_seq_len=1024,
     validation_split=0.1,
 )
-dataset = SequenceDataset(dataset_config)
+dataset = SequenceDataset(config)
 
-# Build strategy with device context
-device = DeviceConfig(target="cuda", mixed_precision="bf16")
-context = build_strategy_context(
-    device=device,
-    batch=None,
-    require_runtime=True,
-)
-
-# Create strategy
-strategy = RLPolicyStrategy(
-    alphabet="ACGT",
-    min_len=50,
-    max_len=500,
-)
-
-# Prepare with runtime
-strategy.prepare(context)
-
-# SFT warm-start
-strategy.warm_start(dataset=dataset, epochs=3)
-
-print("✓ SFT warm-start complete")
+train_loader = dataset.train_loader(batch_size=32, shuffle=True)
+val_loader = dataset.val_loader(batch_size=32)
 ```
 
-### SFT Metrics & Logging
+Need sample data? Run `python scripts/datasets/ctrl_dna/download_promoters.py --output-dir data/promoters` to create a mock FASTA library.
 
-During SFT, the following are logged to MLflow:
+Pass this dataset into `Engine(..., sft=SFTConfig(dataset, epochs=3, batch_size=32))` and `RLPolicyStrategy.warm_start` will tokenize, fine-tune, and log SFT metrics automatically before RL starts.
 
-- **loss**: Cross-entropy loss per epoch
-- **accuracy**: Token accuracy on train/val splits
-- **kl_divergence**: KL between policy and reference (if applicable)
-- **best_val_loss**: Best validation loss across epochs
-- **checkpoint**: Model weights at best epoch
-
-## Step 4: Constrained RL Loop
-
-### Strategy Capabilities & Context
-
-The RLPolicy strategy declares:
+## 3. Stack Reward Blocks
 
 ```python
-caps = strategy.strategy_caps()
-assert caps.requires_runtime is True  # Needs device/autocast support
-assert caps.supports_fine_tuning is True  # Can do warm_start()
-assert caps.kl_regularization == "token"  # Per-token KL penalty
+from strand.evaluators.reward_aggregator import RewardAggregator
+from strand.rewards.gc_content import GCContentReward
+from strand.rewards.advanced import EnformerRewardBlock, EnformerConfig, TFBSFrequencyCorrelationBlock, TFBSConfig
+
+reward_blocks = [
+    EnformerRewardBlock(
+        EnformerConfig(
+            cell_types=["hNSPC"],
+            weight=0.6,
+            backend="onnx",
+            model_path="weights/enformer_hnspc.onnx",
+        )
+    ),
+    TFBSFrequencyCorrelationBlock(
+        TFBSConfig(
+            motifs=["CEBPB", "STAT1"],
+            target_profile_path="configs/targets/hnspc_tfbs.json",
+            weight=0.3,
+        )
+    ),
+    GCContentReward(target=0.52, tolerance=0.05, weight=0.1),
+]
+
+rewards = RewardAggregator(reward_blocks)
 ```
 
-### RL Loop
+Install extra dependencies with `pip install -e .[models,inference]` before using Enformer/TFBS blocks.
+
+## 4. Constraints & Dual Variables
+
+```python
+from strand.engine.constraints import BoundedConstraint, Direction
+from strand.engine.constraints.dual import DualVariableSet
+
+constraints = [
+    BoundedConstraint(name="off_target", direction=Direction.LE, bound=0.15),
+    BoundedConstraint(name="length", direction=Direction.LE, bound=600.0),
+]
+
+dual_vars = DualVariableSet()
+dual_vars.add_constraint("off_target", init_weight=1.0, adaptive_step=0.2)
+dual_vars.add_constraint("length", init_weight=0.3, adaptive_step=0.1)
+
+# Example: update after each iteration using recorded violations
+violations = {"off_target": 0.18, "length": 580.0}
+weights = dual_vars.update_all(violations)
+print("Updated dual weights", weights)
+
+> Ensure your evaluator populates `metrics.constraints["off_target"]` (for example, by exposing the TFBS divergence metric) so `BoundedConstraint` and dual updates receive real measurements.
+```
+
+Use the summaries emitted by `dual_vars.log_summary()` to debug constraint drift in MLflow or console logs.
+
+## 5. Run the RL Engine
 
 ```python
 from strand.engine.engine import Engine, EngineConfig
-from strand.evaluators.composite import CompositeEvaluator
 from strand.engine.executors.local import LocalExecutor
+from strand.engine.runtime import BatchConfig, DeviceConfig
+from strand.engine.strategies.rl.rl_policy import RLPolicyStrategy
+from strand.engine.score import default_score
+from strand.evaluators.composite import CompositeEvaluator
 
-# Create evaluator (combines reward blocks)
+device_cfg = DeviceConfig(target="cuda", mixed_precision="bf16")
+batch_cfg = BatchConfig(eval_size=64, train_size=16, max_tokens=2048)
+
 evaluator = CompositeEvaluator(
-    reward_blocks=[
-        EnformerRewardBlock(cell_types=["hNSPC"]),
-        GCContentBlock(target=0.5),
-    ],
-    constraint_blocks=[
-        OffTargetConstraint(max_divergence=0.2),
-    ],
+    rewards=rewards,
+    include_length=True,
+    include_gc=False,
 )
 
-# Create executor for parallel evaluation
-executor = LocalExecutor(evaluator, num_workers=4)
-
-# Configure engine
-engine_config = EngineConfig(
-    iterations=100,
-    population_size=64,
-    seed=42,
-)
-
-# Run optimization
 engine = Engine(
-    strategy=strategy,
-    executor=executor,
-    config=engine_config,
-)
-results = engine.run()
-
-print(f"Best score: {results.best_score}")
-print(f"Best sequence: {results.best_sequence.tokens}")
-```
-
-### Dual Variable Management (Constraint Handling)
-
-For adaptive constraint enforcement, use dual variables:
-
-```python
-from strand.engine.constraints.dual import DualVariableManager
-
-# Create managers for each constraint
-dual_managers = {
-    "off_target": DualVariableManager(
-        init_weight=1.0,
-        max_weight=100.0,
-        adaptive_step=0.1,
+    config=EngineConfig(
+        iterations=75,
+        population_size=128,
+        method="rl-policy",
+        device=device_cfg,
+        batching=batch_cfg,
     ),
-}
-
-# In RL strategy (inside tell()):
-for constraint_name, manager in dual_managers.items():
-    violation = compute_constraint_violation(...)
-    new_weight = manager.update(violation)
-    log_metric(f"dual_{constraint_name}_weight", new_weight)
-```
-
-## Step 5: Evaluation & Deployment
-
-### Export Best Model
-
-```python
-from strand.engine.strategies.runtime_adapter import StrategyRuntimeAdapter
-
-adapter = StrategyRuntimeAdapter(strategy._runtime)
-
-# Save checkpoint
-adapter.save_checkpoint(
-    strategy._policy_module,
-    strategy._optimizer,
-    path="checkpoints/best_policy.pt",
-    metadata={
-        "step": results.best_iteration,
-        "score": results.best_score,
-        "date": datetime.now().isoformat(),
-    },
+    strategy=RLPolicyStrategy(alphabet="ACGT", min_len=200, max_len=600, seed=7),
+    evaluator=evaluator,
+    executor=LocalExecutor(evaluator=evaluator, batch_size=64),
+    score_fn=default_score,
+    constraints=constraints,
 )
 
-# Save sequences
-with open("results/optimized_sequences.fasta", "w") as f:
-    for seq in results.all_sequences[:100]:
-        f.write(f">{seq.id}\n{seq.tokens}\n")
+results = engine.run()
+dual_vars.log_summary()
+print("Best sequence:", results.best)
 ```
 
-### Create Reproducible Manifest
+Tips:
+- Switch to `LocalPoolExecutor` if your reward stack is CPU-bound and parallel-friendly.
+- Use `TorchExecutor` when your evaluator is GPU-heavy and you have a `ModelRuntime` handy.
+
+## 6. Logging & Reproducibility
 
 ```python
-import json
-from strand.manifests import EngineManifest
+from strand.logging.mlflow_tracker import MLflowTracker
 
-manifest = EngineManifest(
-    config=engine_config,
-    strategy=strategy.state(),
-    results=results,
-    model_checkpoint="checkpoints/best_policy.pt",
-    mlflow_run_id=experiment_run_id,
-)
+tracker = MLflowTracker(experiment_name="ctrl-dna-alpha", tracking_uri="./mlruns")
+tracker.start_run(run_name="hnspc_rl")
+tracker.log_config(engine._config)  # private access, but convenient inside scripts
 
-with open("results/manifest.json", "w") as f:
-    json.dump(manifest.to_dict(), f, indent=2)
+for step, stats in enumerate(results.history):
+    tracker.log_iteration_stats(step, stats)
+
+for epoch in range(rl_epochs := 3):  # replace with your actual SFT loop stats
+    tracker.log_sft_metrics(epoch=epoch, loss=0.42, accuracy=0.91, kl=0.06)
+
+tracker.log_results(results)
+tracker.end_run()
 ```
 
-## Troubleshooting
+Call `tracker.log_sft_metrics` (and optionally `tracker.log_sft_checkpoint`) from your warm-start loop so SFT loss/accuracy/KL sit alongside RL metrics.
 
-### CUDA Out of Memory
+## Current Limitations (Explicit)
 
-**Problem**: `RuntimeError: CUDA out of memory`
+| Area | Status |
+| --- | --- |
+| SequenceDataset streaming | Entire dataset is loaded into memory. Chunk massive corpora manually or extend the loader with streaming. |
+| Ctrl-DNA dataset downloader | Only emits mock FASTA files today. Fill in the GSE/TCGA hooks if you need real promoters. |
+| Foundation model checkpoints | HyenaDNA/Enformer weights are not bundled; reference your own checkpoints or Hugging Face repositories in configs. |
 
-**Solutions**:
-1. Reduce `batch.eval_size` or `batch.train_size`
-2. Enable gradient accumulation: `device.gradient_accumulation_steps=4`
-3. Use `device.mixed_precision="bf16"` (bfloat16 uses half memory)
-4. Use a smaller policy head (e.g., "per-position" instead of "hyenadna")
-
-### Dataset Schema Mismatch
-
-**Problem**: `ValueError: batch must contain 'input_ids'`
-
-**Causes**:
-- Tokenizer returns different keys (e.g., `token_ids` vs `input_ids`)
-- FASTA parsing failed (check file format)
-
-**Solutions**:
-1. Verify FASTA format: `head -4 data/promoters.fasta`
-2. Check tokenizer output: `print(tokenizer("ACGT"))`
-3. Use BioPython for robust FASTA: `pip install biopython`
-
-### Constraint Divergence
-
-**Problem**: Dual variables exploding (weight → ∞)
-
-**Causes**:
-- Constraint too restrictive (impossible to satisfy)
-- Reward blocks contradicting constraints
-
-**Solutions**:
-1. Relax constraint bounds
-2. Check reward blocks don't conflict
-3. Reduce `constraint_penalty` parameter
-4. Log constraint violations: `log_metric("constraint_violation", violation)`
-
-### Slow RL Convergence
-
-**Problem**: Policy not improving over iterations
-
-**Causes**:
-- Learning rate too low
-- SFT not initialized properly
-- Reward signal too noisy
-
-**Solutions**:
-1. Increase `strategy.learning_rate` (default 0.1)
-2. Extend SFT `epochs` (more pre-training)
-3. Aggregate reward blocks (reduce noise): `aggregation="mean"`
-4. Increase `population_size` for better signal
-
-## Extension: Custom Reward Blocks
-
-To add domain-specific rewards:
-
-```python
-from strand.rewards.base import RewardBlock
-
-class CustomBlock(RewardBlock):
-    def __call__(self, sequences: list[Sequence]) -> dict[str, float]:
-        rewards = []
-        for seq in sequences:
-            # Your custom scoring
-            score = score_my_metric(seq.tokens)
-            rewards.append(score)
-        return {"custom_reward": float(np.mean(rewards))}
-```
-
-## References
-
-- **Architecture**: See `docs/architecture/strategies.md`
-- **Reward Blocks**: See `docs/rewards/enformer_tfbs.md`
-- **Constraint Management**: See `docs/constraints/dual_variables.md`
-- **HyenaDNA**: https://github.com/HyenaDNA/HyenaDNA
-- **Ctrl-DNA Paper**: https://arxiv.org/abs/2505.20578
-
+Keeping these gaps visible makes it clear what remains for full Ctrl-DNA parity. Contributions welcome!

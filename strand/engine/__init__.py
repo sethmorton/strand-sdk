@@ -7,6 +7,7 @@ from .rules import Rules
 from .score import default_score
 from .strategies import strategy_from_name
 from .types import Metrics
+from .executors.pool import LocalPoolExecutor
 
 __all__ = [
     "Strategy",
@@ -22,4 +23,5 @@ __all__ = [
     "Rules",
     "default_score",
     "strategy_from_name",
+    "LocalPoolExecutor",
 ]

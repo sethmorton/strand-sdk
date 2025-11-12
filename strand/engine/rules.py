@@ -20,16 +20,29 @@ class Rules:
     """
 
     init: Mapping[str, float] = field(default_factory=dict)
+    step_size: float = 0.05
+    clip: tuple[float, float] = (0.0, 10.0)
 
     def values(self) -> Mapping[str, float]:  # pragma: no cover - surface only
         """Return a read-only view of current rule values."""
         return dict(self.init)
 
     def update(self, signal: Mapping[str, list[float]]) -> None:
-        """Update rule values given per-name signals (e.g., violations).
+        """Adapt rule weights from per-name signals (e.g., violations).
 
-        Concrete implementations will aggregate signals and adjust ``init``.
-        For now, this is a no-op while we implement adaptive dual updates.
+        Simple additive update per name: ``w <- clip(w + step * mean(signal))``.
+        Names not present in the current rule set are added on demand.
         """
-        # TODO: Implement adaptive dual variable updates in Phase 5+
-
+        values = dict(self.init)
+        lo, hi = self.clip
+        for name, vals in signal.items():
+            if not vals:
+                continue
+            mean_val = sum(vals) / max(len(vals), 1)
+            new_val = values.get(name, 0.0) + self.step_size * mean_val
+            if new_val < lo:
+                new_val = lo
+            elif new_val > hi:
+                new_val = hi
+            values[name] = new_val
+        self.init = values

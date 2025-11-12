@@ -9,9 +9,9 @@ Strand is a modular optimization engine for biological sequences. You compose a 
 - Strategy proposes candidates: `ask(n) -> [Sequence]`
 - Executor runs the Evaluator in parallel and preserves order
 - Evaluator returns `Metrics` per sequence: `objective`, `constraints`, `aux`
-- score_fn computes a scalar score from `Metrics` and duals/constraints
+- score_fn computes a scalar score from `Metrics` plus rule weights and constraints
 - Strategy ingests feedback: `tell([(seq, score, metrics)])` and updates its state
-- Optional Lagrange manager updates dual variables from constraint violations
+- Optional rule manager updates weights from constraint violations
 
 ## Quick Start (Surfaces)
 
@@ -40,7 +40,7 @@ rewards = [RewardBlock.stability(), RewardBlock.novelty(baseline=["MKT..."], wei
 
 # Evaluator and executor
 evaluator: Evaluator = RewardAggregator(reward_blocks=rewards)
-executor: Executor = LocalExecutor(evaluator=evaluator, mode="auto", num_workers="auto", batch_size=64)
+executor: Executor = LocalExecutor(evaluator=evaluator, batch_size=64)
 
 # Optional constraints and rules
 constraints = [BoundedConstraint(name="novelty", direction=Direction.GE, bound=0.3)]

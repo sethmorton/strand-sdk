@@ -1,12 +1,14 @@
-"""Engine orchestration surfaces.
+"""Helpers for running the optimization engine.
 
-The engine drives an iterative ask → run → score → tell → update loop. It is
-configured with small, composable parts (Strategy, Evaluator, Executor) and a
-simple scoring rule that turns Metrics into a single number per candidate.
+The engine runs a simple loop: strategies propose sequences, executors evaluate
+them, scorers turn metrics into numbers, and we keep the best result.
 """
 
 from __future__ import annotations
 
+import logging
+import math
+import time
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 
@@ -19,12 +21,15 @@ from strand.engine.types import Metrics
 ScoreFn = Callable[[Metrics, Mapping[str, float], list[BoundedConstraint]], float]
 
 
+_LOGGER = logging.getLogger(__name__)
+
+
 @dataclass(frozen=True, slots=True)
 class EngineConfig:
-    """Engine configuration (stable surface).
+    """User-facing settings that control an engine run.
 
-    The `method` field is a label (for manifests and logs), not used to pick a strategy.
-    Pass your chosen Strategy instance directly to Engine.
+    ``method`` is only a descriptive label for logs and manifests. Supply the
+    actual :class:`~strand.engine.interfaces.Strategy` when creating the engine.
     """
 
     iterations: int = 100
@@ -39,13 +44,10 @@ class EngineConfig:
 
 @dataclass(frozen=True, slots=True)
 class IterationStats:
-    """Per-iteration summary statistics.
+    """Numbers tracked for each iteration.
 
-    This structure is designed for logging, dashboards, and manifest summaries.
-
-    - `rules`: A snapshot of rule weights applied in this iteration.
-    - `violations`: Mean constraint violation per named constraint for the iteration
-      (missing constraints default to 0.0).
+    ``rules`` holds the rule weights used in the iteration. ``violations`` stores
+    the mean violation per constraint name (missing constraints default to ``0``).
     """
 
     iteration: int
@@ -74,17 +76,14 @@ class EngineResults:
 
 
 class Engine:
-    """Iterative optimization driver.
+    """Drives the optimization loop.
 
-    Compose a Strategy, Evaluator, Executor, and a scoring rule (``score_fn``)
-    that maps Metrics + rules + constraints → scalar.
+    Compose a strategy, evaluator, executor, and scoring function. The engine
+    repeats ``ask → run → score → tell`` while recording iteration summaries.
 
-    The engine runs an ask → run → score → tell → update loop, recording
-    iteration statistics for reproducibility and analysis.
-
-    **Implementation note:** Engine passes `rules.values()` into `score_fn` and validates
-    inputs before execution. Strategies must emit valid sequences; invalid sequences may be
-    dropped and counted in iteration statistics.
+    **Implementation note:** ``score_fn`` receives the rule weights and
+    constraint list on every call. Strategies must emit valid sequences; invalid
+    sequences may be dropped and counted in the stats.
     """
 
     def __init__(
@@ -107,33 +106,28 @@ class Engine:
         self._rules = rules or Rules()
 
     def run(self) -> EngineResults:
-        """Execute the optimization loop and return results.
+        """Execute the optimization loop and return results."""
 
-        Orchestrates ask → run → score → tell → update, accumulating iteration stats
-        and tracking the best sequence and score observed.
-
-        Returns
-        -------
-        EngineResults
-            Final results with best (Sequence, float) pair, history of stats, and summary.
-        """
         history: list[IterationStats] = []
         best_overall: tuple[Sequence, float] | None = None
 
-        for stats in self.stream():
-            history.append(stats)
-            # Update best overall
-            if stats.best > (best_overall[1] if best_overall else float("-inf")):
-                # We need the best sequence, but stats only has the best score
-                # For now, we'll set it when we get it from strategy.best()
-                pass
+        try:
+            for stats in self.stream():
+                history.append(stats)
+                strategy_best = self._strategy.best()
+                if strategy_best is not None and (
+                    best_overall is None or strategy_best[1] > best_overall[1]
+                ):
+                    best_overall = strategy_best
+        finally:
+            self._executor.close()
 
-        # Get the best sequence from the strategy
-        strategy_best = self._strategy.best()
-        if strategy_best is not None:
-            best_overall = strategy_best
+        if best_overall is None:
+            strategy_best = self._strategy.best()
+            if strategy_best is not None:
+                best_overall = strategy_best
 
-        summary = {
+        summary: dict[str, object] = {
             "config": {
                 "iterations": self._config.iterations,
                 "population_size": self._config.population_size,
@@ -145,88 +139,121 @@ class Engine:
             },
             "total_evals": sum(s.evals for s in history),
             "iterations_completed": len(history),
+            "stopped_early": len(history) < self._config.iterations,
         }
+
+        if best_overall is not None:
+            summary["best_score"] = best_overall[1]
 
         return EngineResults(best=best_overall, history=history, summary=summary)
 
     def stream(self) -> Iterator[IterationStats]:
-        """Yield iteration statistics as they are computed.
-
-        Implements the core ask → run → score → tell loop with early stopping
-        and max evaluation limits.
-        """
-        import time
+        """Yield iteration statistics as they are computed."""
 
         total_evals = 0
         best_score = float("-inf")
         patience_counter = 0
 
+        self._executor.prepare()
+
         for iteration in range(self._config.iterations):
-            iter_start = time.time()
+            iter_start = time.perf_counter()
 
-            # Ask: get candidates from strategy
             candidates = self._strategy.ask(self._config.population_size)
+            if not candidates:
+                _LOGGER.warning("Strategy.ask returned no candidates; stopping early")
+                break
 
-            # Run: evaluate in parallel, preserving order
-            metrics_list = self._executor.run(
-                candidates,
-                timeout_s=self._config.timeout_s,
-            )
-
-            # Score: turn Metrics into scalars
-            scores = [
-                self._score_fn(m, self._rules.values(), self._constraints)
-                for m in metrics_list
-            ]
-
-            # Tell: ingest feedback
-            items = list(zip(candidates, scores, metrics_list))
-            self._strategy.tell(items)
-
-            # Update rules (optional)
-            if self._rules is not None:
-                violations = {
-                    c.name: [m.constraints.get(c.name, 0.0) for m in metrics_list]
-                    for c in self._constraints
-                }
-                self._rules.update(violations)
-
-            # Compute iteration stats
-            total_evals += len(candidates)
-            iter_time = time.time() - iter_start
-            throughput = len(candidates) / iter_time if iter_time > 0 else 0
-
-            best_iter = max(scores) if scores else float("-inf")
-            mean_iter = sum(scores) / len(scores) if scores else 0.0
-            std_iter = (
-                (sum((s - mean_iter) ** 2 for s in scores) / len(scores)) ** 0.5
-                if len(scores) > 1
-                else 0.0
-            )
-
-            # Count timeouts and errors (basic for now)
-            timeouts = sum(1 for m in metrics_list if m.objective == 0.0)
+            rules_snapshot = dict(self._rules.values())
             errors = 0
+            timeouts = 0
+
+            try:
+                metrics_list = self._executor.run(
+                    candidates,
+                    timeout_s=self._config.timeout_s,
+                    batch_size=self._config.population_size,
+                )
+            except TimeoutError:
+                timeouts = len(candidates)
+                metrics_list = [
+                    Metrics(objective=0.0, constraints={}, aux={}) for _ in candidates
+                ]
+            except Exception as exc:  # pragma: no cover - defensive path
+                _LOGGER.exception("Executor.run failed", exc_info=exc)
+                errors = len(candidates)
+                metrics_list = [
+                    Metrics(objective=0.0, constraints={}, aux={}) for _ in candidates
+                ]
+
+            if len(metrics_list) != len(candidates):
+                raise RuntimeError(
+                    "Executor returned mismatched results: "
+                    f"expected {len(candidates)} got {len(metrics_list)}"
+                )
+
+            scored_items: list[tuple[Sequence, float, Metrics]] = []
+            scores: list[float] = []
+            for seq, metrics in zip(candidates, metrics_list):
+                try:
+                    score = self._score_fn(metrics, rules_snapshot, self._constraints)
+                except Exception as exc:  # pragma: no cover - defensive path
+                    _LOGGER.exception("score_fn raised", exc_info=exc)
+                    errors += 1
+                    score = float("-inf")
+                scores.append(score)
+                scored_items.append((seq, score, metrics))
+
+            self._strategy.tell(scored_items)
+
+            violation_signals: dict[str, list[float]] = {}
+            for constraint in self._constraints:
+                values = [
+                    constraint.violation(metrics.constraints.get(constraint.name, 0.0))
+                    for metrics in metrics_list
+                ]
+                violation_signals[constraint.name] = values
+
+            if self._rules is not None:
+                self._rules.update(violation_signals)
+
+            total_evals += len(metrics_list)
+            iter_time = time.perf_counter() - iter_start
+            throughput = len(metrics_list) / iter_time if iter_time > 0 else 0.0
+
+            if scores:
+                best_iter = max(scores)
+                mean_iter = sum(scores) / len(scores)
+                if len(scores) > 1:
+                    variance = sum((s - mean_iter) ** 2 for s in scores) / len(scores)
+                    std_iter = math.sqrt(variance)
+                else:
+                    std_iter = 0.0
+            else:
+                best_iter = float("-inf")
+                mean_iter = 0.0
+                std_iter = 0.0
+
+            violations_mean = {
+                name: (sum(values) / len(values) if values else 0.0)
+                for name, values in violation_signals.items()
+            }
 
             stats = IterationStats(
                 iteration=iteration,
                 best=best_iter,
                 mean=mean_iter,
                 std=std_iter,
-                evals=len(candidates),
+                evals=len(metrics_list),
                 throughput=throughput,
                 timeouts=timeouts,
                 errors=errors,
-                rules=dict(self._rules.values()),
-                violations={
-                    c.name: [m.constraints.get(c.name, 0.0) for m in metrics_list]
-                    for c in self._constraints
-                },
+                rules=rules_snapshot,
+                violations=violations_mean,
             )
 
             yield stats
 
-            # Early stopping logic
             if best_iter > best_score:
                 best_score = best_iter
                 patience_counter = 0

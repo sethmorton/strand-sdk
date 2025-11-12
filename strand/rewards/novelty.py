@@ -16,7 +16,7 @@ class NoveltyReward(BaseRewardBlock):
     ):
         super().__init__(name=f"novelty:{metric}", weight=weight)
         if not baseline:
-            raise ValueError("Baseline sequences are required for novelty scoring")
+            raise ValueError("baseline sequences are required for novelty scoring")
         self._baseline = baseline
         self._metric = metric
 

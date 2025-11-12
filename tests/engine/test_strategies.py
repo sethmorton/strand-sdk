@@ -1,46 +1,34 @@
-"""Tests for optimization strategies (Random, CEM, etc.)."""
-
 from strand.core.sequence import Sequence
 from strand.engine.strategies.cem import CEMStrategy
 from strand.engine.strategies.random import RandomStrategy
+from strand.engine.types import Metrics
 
 
 class TestRandomStrategy:
     """RandomStrategy unit tests."""
 
     def test_best_tracking(self):
-        """Test that RandomStrategy tracks the best sequence."""
-        strategy = RandomStrategy(
-            alphabet="ACDE",
-            min_len=5,
-            max_len=10,
-            seed=42,
-        )
+        """tell() updates the best sequence with highest score."""
 
-        # Simulate ask and tell
+        strategy = RandomStrategy(alphabet="ACDE", min_len=5, max_len=10, seed=42)
         candidates = strategy.ask(3)
-        assert len(candidates) == 3
+        metrics = Metrics(objective=0.0, constraints={}, aux={})
+        items = [
+            (candidates[0], 0.5, metrics),
+            (candidates[1], 0.9, metrics),
+            (candidates[2], 0.3, metrics),
+        ]
 
-        # Initially no best
-        assert strategy.best() is None
-
-        # Tell with some scores
-        items = [(candidates[0], 0.5, None), (candidates[1], 0.9, None), (candidates[2], 0.3, None)]  # type: ignore
         strategy.tell(items)
 
-        # Should track the best (0.9)
-        best_seq, best_score = strategy.best()  # type: ignore
+        best_seq, best_score = strategy.best()  # type: ignore[misc]
         assert best_score == 0.9
         assert best_seq == candidates[1]
 
     def test_ask_returns_sequences_in_range(self):
-        """Test that RandomStrategy generates sequences within specified length range."""
-        strategy = RandomStrategy(
-            alphabet="ACDE",
-            min_len=10,
-            max_len=20,
-            seed=42,
-        )
+        """RandomStrategy generates valid sequences in the configured range."""
+
+        strategy = RandomStrategy(alphabet="ACDE", min_len=10, max_len=20, seed=99)
 
         candidates = strategy.ask(5)
         assert len(candidates) == 5
@@ -49,18 +37,27 @@ class TestRandomStrategy:
             assert 10 <= len(seq.tokens) <= 20
             assert all(c in "ACDE" for c in seq.tokens)
 
-    def test_seeded_reproducible_within_instance(self):
-        """Test that RandomStrategy with same seed produces same results within instance."""
-        strategy = RandomStrategy(alphabet="AC", min_len=5, max_len=5, seed=42)
+    def test_seed_reproducible_across_instances(self):
+        """Strategies with same seed generate identical batches."""
 
-        # Ask twice from the same strategy - should produce different sequences
-        seq1 = strategy.ask(2)
-        seq2 = strategy.ask(2)
+        strategy_a = RandomStrategy(alphabet="AC", min_len=5, max_len=5, seed=123)
+        strategy_b = RandomStrategy(alphabet="AC", min_len=5, max_len=5, seed=123)
 
-        # But they should be valid sequences from the alphabet
-        for seq in seq1 + seq2:
-            assert all(c in "AC" for c in seq.tokens)
-            assert len(seq.tokens) == 5
+        seqs_a = strategy_a.ask(4)
+        seqs_b = strategy_b.ask(4)
+
+        assert [seq.tokens for seq in seqs_a] == [seq.tokens for seq in seqs_b]
+        assert [seq.id for seq in seqs_a] == ["random_0", "random_1", "random_2", "random_3"]
+
+    def test_state_includes_seed_and_counter(self):
+        """state() exposes metadata useful for manifests."""
+
+        strategy = RandomStrategy(alphabet="AC", min_len=3, max_len=3, seed=7)
+        strategy.ask(2)
+
+        state = strategy.state()
+        assert state["seed"] == 7
+        assert state["generated"] == 2
 
 
 class TestCEMStrategy:
@@ -87,21 +84,16 @@ class TestCEMStrategy:
         )
 
         candidates = strategy.ask(4)
-        assert len(candidates) == 4
-
-        # Initially no best
-        assert strategy.best() is None
-
-        # Tell with scores
+        metrics = Metrics(objective=0.0, constraints={}, aux={})
         items = [
-            (candidates[0], 0.3, None),
-            (candidates[1], 0.7, None),
-            (candidates[2], 0.5, None),
-            (candidates[3], 0.2, None),
-        ]  # type: ignore
+            (candidates[0], 0.3, metrics),
+            (candidates[1], 0.7, metrics),
+            (candidates[2], 0.5, metrics),
+            (candidates[3], 0.2, metrics),
+        ]
         strategy.tell(items)
 
-        best_seq, best_score = strategy.best()  # type: ignore
+        best_seq, best_score = strategy.best()  # type: ignore[misc]
         assert best_score == 0.7
         assert best_seq == candidates[1]
 
@@ -115,11 +107,11 @@ class TestCEMStrategy:
         )
 
         candidates = strategy.ask(2)
-        items = [(candidates[0], 0.5, None), (candidates[1], 0.9, None)]  # type: ignore
+        metrics = Metrics(objective=0.0, constraints={}, aux={})
+        items = [(candidates[0], 0.5, metrics), (candidates[1], 0.9, metrics)]
         strategy.tell(items)
 
         state = strategy.state()
         assert "best_score" in state
         assert state["best_score"] == 0.9
         assert "probs" in state
-

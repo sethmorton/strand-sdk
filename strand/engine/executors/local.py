@@ -1,57 +1,28 @@
-"""Local executor for parallel evaluation.
-
-Chooses threads or processes to evaluate batches with an Evaluator while
-preserving order.
-"""
+"""Local executor that evaluates sequences one after another."""
 
 from __future__ import annotations
 
-import os
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+import logging
+import time
 from dataclasses import dataclass
+from typing import ClassVar
 
 from strand.core.sequence import Sequence
 from strand.engine.interfaces import Evaluator
 from strand.engine.types import Metrics
 
 
-@dataclass
+@dataclass(slots=True)
 class LocalExecutor:
-    """Parallel executor that wraps an Evaluator.
-
-    Parameters
-    ----------
-    evaluator : Evaluator
-        The pure evaluator to run in parallel.
-    mode : str
-        "auto" (default), "thread", or "process".
-    num_workers : int | str
-        Integer count or "auto" to infer from hardware.
-    batch_size : int
-        Mini-batch size per worker.
-    """
+    """Sequential executor built around an evaluator."""
 
     evaluator: Evaluator
-    mode: str = "auto"
-    num_workers: int | str = "auto"
     batch_size: int = 64
 
-    def __post_init__(self) -> None:
-        """Resolve num_workers to an integer."""
-        if isinstance(self.num_workers, str) and self.num_workers.lower() == "auto":
-            self._num_workers = os.cpu_count() or 1
-        else:
-            self._num_workers = int(self.num_workers)
-
-    def _resolve_mode(self) -> str:
-        """Resolve 'auto' mode to 'thread' or 'process'."""
-        if self.mode.lower() == "auto":
-            # Use threads by default; they're lighter and work well for I/O
-            return "thread"
-        return self.mode.lower()
+    _LOGGER: ClassVar[logging.Logger] = logging.getLogger(__name__)
 
     def prepare(self) -> None:
-        """Optional heavy initialization (e.g., model warmup)."""
+        """Hook for heavy setup (unused for the local executor)."""
 
     def run(
         self,
@@ -60,61 +31,39 @@ class LocalExecutor:
         timeout_s: float | None = None,
         batch_size: int | None = None,
     ) -> list[Metrics]:
-        """Evaluate sequences and return metrics in the same order.
+        """Evaluate sequences while preserving order."""
 
-        Parameters
-        ----------
-        seqs : list[Sequence]
-            Input sequences to evaluate.
-        timeout_s : float | None
-            Timeout per batch in seconds (not enforced per-sequence yet).
-        batch_size : int | None
-            Override instance batch_size for this call.
-
-        Returns
-        -------
-        list[Metrics]
-            Metrics in the same order as input sequences.
-        """
         if not seqs:
             return []
 
-        batch_size = batch_size or self.batch_size
-        mode = self._resolve_mode()
+        effective_batch = batch_size or self.batch_size
+        deadline = None if timeout_s is None else time.perf_counter() + timeout_s
 
-        # Create batches
-        batches = [seqs[i : i + batch_size] for i in range(0, len(seqs), batch_size)]
-        batch_indices = list(range(0, len(seqs), batch_size))
+        results: list[Metrics] = []
+        for start in range(0, len(seqs), effective_batch):
+            if deadline is not None and time.perf_counter() >= deadline:
+                raise TimeoutError("LocalExecutor run exceeded timeout")
 
-        # Choose executor
-        executor_class = ThreadPoolExecutor if mode == "thread" else ProcessPoolExecutor
+            batch = seqs[start : start + effective_batch]
+            try:
+                batch_results = self.evaluator.evaluate_batch(batch)
+            except TimeoutError:
+                raise
+            except Exception as exc:  # pragma: no cover - defensive path
+                self._LOGGER.exception("Evaluator raised during evaluate_batch", exc_info=exc)
+                batch_results = [
+                    Metrics(objective=0.0, constraints={}, aux={}) for _ in batch
+                ]
 
-        results_by_index = {}
-        with executor_class(max_workers=self._num_workers) as executor:
-            # Submit all batches
-            futures = {
-                executor.submit(self.evaluator.evaluate_batch, batch): (idx, batch)
-                for idx, batch in zip(batch_indices, batches)
-            }
+            if len(batch_results) != len(batch):  # pragma: no cover - defensive path
+                raise RuntimeError(
+                    "Evaluator returned mismatched batch size: "
+                    f"expected {len(batch)} got {len(batch_results)}"
+                )
 
-            # Collect results as they complete
-            for future in as_completed(futures):
-                idx, batch = futures[future]
-                try:
-                    metrics = future.result(timeout=timeout_s)
-                    results_by_index[idx] = metrics
-                except Exception:
-                    # On error, return empty metrics for this batch
-                    results_by_index[idx] = [
-                        Metrics(objective=0.0, constraints={}, aux={}) for _ in batch
-                    ]
+            results.extend(batch_results)
 
-        # Reconstruct in original order
-        all_metrics = []
-        for batch_start in batch_indices:
-            all_metrics.extend(results_by_index.get(batch_start, []))
-
-        return all_metrics
+        return results
 
     def close(self) -> None:
-        """Optional cleanup hook."""
+        """Hook for cleanup work (unused)."""

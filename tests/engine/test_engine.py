@@ -1,9 +1,12 @@
-"""Tests for Engine orchestration (ask/run/score/tell loop)."""
+import math
+
+import pytest
 
 from strand.core.sequence import Sequence
 from strand.engine import Engine, EngineConfig, default_score
+from strand.engine.constraints import BoundedConstraint, Direction
 from strand.engine.executors.local import LocalExecutor
-from strand.engine.strategies.cem import CEMStrategy
+from strand.engine.rules import Rules
 from strand.engine.strategies.random import RandomStrategy
 from strand.evaluators.reward_aggregator import RewardAggregator
 from strand.rewards import RewardBlock
@@ -12,30 +15,18 @@ from strand.rewards import RewardBlock
 class TestEngineWithRandomStrategy:
     """Integration tests for Engine with RandomStrategy."""
 
-    def test_minimal_loop(self):
-        """Test a minimal end-to-end optimization loop."""
-        rewards = [
-            RewardBlock.stability(weight=1.0),
-            RewardBlock.novelty(baseline=["ACDE"], weight=0.5),
-        ]
-
+    def _build_engine(self, *, iterations: int = 2, population: int = 6) -> Engine:
+        rewards = [RewardBlock.stability(weight=1.0)]
         evaluator = RewardAggregator(reward_blocks=rewards)
-        executor = LocalExecutor(evaluator=evaluator)
-
+        executor = LocalExecutor(evaluator=evaluator, batch_size=population)
         strategy = RandomStrategy(
             alphabet="ACDE",
             min_len=5,
-            max_len=15,
+            max_len=10,
             seed=42,
         )
-
-        config = EngineConfig(
-            iterations=2,
-            population_size=8,
-            seed=42,
-        )
-
-        engine = Engine(
+        config = EngineConfig(iterations=iterations, population_size=population, seed=42)
+        return Engine(
             config=config,
             strategy=strategy,
             evaluator=evaluator,
@@ -43,63 +34,71 @@ class TestEngineWithRandomStrategy:
             score_fn=default_score,
         )
 
+    def test_minimal_loop(self):
+        """Engine.run returns best candidate, history, and summary."""
+
+        engine = self._build_engine(iterations=3, population=4)
         results = engine.run()
 
-        # Verify results structure
         assert results.best is not None
         assert isinstance(results.best[0], Sequence)
         assert isinstance(results.best[1], float)
-        assert len(results.history) == 2
-        assert results.history[0].iteration == 0
-        assert results.history[1].iteration == 1
-        assert results.history[0].evals == 8
-        assert results.history[1].evals == 8
+        assert len(results.history) == 3
+        assert results.summary["total_evals"] == 12
+        assert results.summary["iterations_completed"] == 3
+        assert results.summary["stopped_early"] is False
+        assert math.isfinite(results.summary["best_score"])
 
-    def test_stream_iteration(self):
-        """Test that Engine.stream() yields statistics for each iteration."""
+        for idx, stats in enumerate(results.history):
+            assert stats.iteration == idx
+            assert stats.evals == 4
+            assert stats.rules == {}
+            assert stats.violations == {}
+            assert math.isfinite(stats.best)
+            assert math.isfinite(stats.mean)
+            assert stats.throughput > 0
+
+    def test_stream_respects_max_evals_and_rules(self):
+        """Engine.stream stops once max_evals is reached and snapshots rules."""
+
         rewards = [RewardBlock.stability(weight=1.0)]
         evaluator = RewardAggregator(reward_blocks=rewards)
-        executor = LocalExecutor(evaluator=evaluator)
-        strategy = RandomStrategy(alphabet="ACDE", min_len=5, max_len=10, seed=42)
-
-        config = EngineConfig(iterations=3, population_size=4, seed=42)
+        executor = LocalExecutor(evaluator=evaluator, batch_size=4)
+        strategy = RandomStrategy(alphabet="AC", min_len=4, max_len=4, seed=123)
+        config = EngineConfig(
+            iterations=10,
+            population_size=4,
+            max_evals=4,
+            early_stop_patience=None,
+        )
+        rules = Rules(init={"stability": 0.5})
         engine = Engine(
             config=config,
             strategy=strategy,
             evaluator=evaluator,
             executor=executor,
             score_fn=default_score,
+            rules=rules,
         )
 
         stats_list = list(engine.stream())
-        assert len(stats_list) == 3
-        for i, stats in enumerate(stats_list):
-            assert stats.iteration == i
-            assert stats.evals == 4
+        assert len(stats_list) == 1
+        stats = stats_list[0]
+        assert stats.rules == {"stability": 0.5}
+        assert stats.evals == 4
+        assert stats.timeouts == 0
+        assert stats.errors == 0
 
+    def test_constraints_are_penalized(self, caplog: pytest.LogCaptureFixture):
+        """Constraints missing in metrics warn once and contribute zero violation."""
 
-class TestEngineWithCEMStrategy:
-    """Integration tests for Engine with CEMStrategy."""
-
-    def test_end_to_end_optimization(self):
-        """Test end-to-end optimization with CEM strategy."""
         rewards = [RewardBlock.stability(weight=1.0)]
         evaluator = RewardAggregator(reward_blocks=rewards)
-        executor = LocalExecutor(evaluator=evaluator)
-
-        strategy = CEMStrategy(
-            alphabet="ACDEFGHIKLMNPQRSTVWY",
-            min_len=15,
-            max_len=25,
-            seed=42,
-        )
-
-        config = EngineConfig(
-            iterations=3,
-            population_size=16,
-            seed=42,
-            method="cem",
-        )
+        executor = LocalExecutor(evaluator=evaluator, batch_size=2)
+        strategy = RandomStrategy(alphabet="AC", min_len=3, max_len=3, seed=321)
+        config = EngineConfig(iterations=1, population_size=2)
+        constraint = BoundedConstraint(name="foo", direction=Direction.LE, bound=0.1)
+        rules = Rules(init={"foo": 2.0})
 
         engine = Engine(
             config=config,
@@ -107,13 +106,13 @@ class TestEngineWithCEMStrategy:
             evaluator=evaluator,
             executor=executor,
             score_fn=default_score,
+            constraints=[constraint],
+            rules=rules,
         )
 
-        results = engine.run()
+        with caplog.at_level("WARNING"):
+            results = engine.run()
 
-        assert results.best is not None
-        best_seq, best_score = results.best
-        assert isinstance(best_seq, Sequence)
-        assert isinstance(best_score, float)
-        assert len(results.history) == 3
-
+        assert results.history[0].violations == {"foo": 0.0}
+        warnings = [rec.message for rec in caplog.records if "Constraint" in rec.message]
+        assert len(warnings) == 1

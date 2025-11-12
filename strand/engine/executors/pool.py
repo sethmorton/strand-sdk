@@ -77,14 +77,13 @@ class LocalPoolExecutor:
         # Submit batches preserving order by tracking futures with their index
         results: list[list[Metrics]] = [None] * len(batches)  # type: ignore[list-item]
 
-        def _evaluate(batch: list[Sequence]) -> list[Metrics]:
-            return self.evaluator.evaluate_batch(batch)
-
         ExecutorCls = ThreadPoolExecutor if mode == "thread" else ProcessPoolExecutor
-        with ExecutorCls(max_workers=max_workers) as pool:
-            futures: list[Future] = []
+        pool = ExecutorCls(max_workers=max_workers)
+        futures: list[Future] = []
+        shutdown_wait = True
+        try:
             for idx, batch in enumerate(batches):
-                futures.append(pool.submit(_evaluate, batch))
+                futures.append(pool.submit(self.evaluator.evaluate_batch, batch))
 
             # Consume futures in submission order to preserve overall ordering
             for idx, fut in enumerate(futures):
@@ -93,11 +92,14 @@ class LocalPoolExecutor:
                     remaining = max(0.0, deadline - time.perf_counter())
                 try:
                     batch_results = fut.result(timeout=remaining)
-                except Exception as exc:  # includes TimeoutError
-                    # Propagate TimeoutError to the engine so it can account for timeouts
-                    if isinstance(exc, TimeoutError):
-                        raise
-                    # For other errors, wrap into a RuntimeError to signal executor failure
+                except TimeoutError:
+                    shutdown_wait = False
+                    for pending in futures[idx:]:
+                        pending.cancel()
+                    raise
+                except Exception as exc:
+                    for pending in futures[idx + 1 :]:
+                        pending.cancel()
                     raise RuntimeError("Worker task failed") from exc
 
                 if len(batch_results) != len(batches[idx]):
@@ -106,6 +108,8 @@ class LocalPoolExecutor:
                         f"expected {len(batches[idx])} got {len(batch_results)}"
                     )
                 results[idx] = batch_results
+        finally:
+            pool.shutdown(wait=shutdown_wait, cancel_futures=True)
 
         # Flatten in original order
         flat: list[Metrics] = []

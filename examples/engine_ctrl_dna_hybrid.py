@@ -13,9 +13,12 @@ https://arxiv.org/abs/2505.20578
 
 from __future__ import annotations
 
+import torch
+
 from strand.engine import Engine, EngineConfig, default_score, strategy_from_name
 from strand.engine.executors.local import LocalExecutor
 from strand.engine.constraints import ConstraintSolver
+from strand.engine.runtime import BatchConfig, DeviceConfig
 from strand.evaluators.reward_aggregator import RewardAggregator
 from strand.rewards import RewardBlock
 
@@ -82,11 +85,14 @@ def main() -> None:
     print(f"  Strategies in ensemble: {len(hybrid_strategy.strategies)}")
 
     # Configure engine
+    device_target = "cuda" if torch.cuda.is_available() else "cpu"
     config = EngineConfig(
         iterations=12,
         population_size=48,
         seed=42,
         method="hybrid-rl-cem-ga",
+        batching=BatchConfig(eval_size=24, train_size=12, max_tokens=960),
+        device=DeviceConfig(target=device_target, mixed_precision="bf16" if device_target == "cuda" else "no"),
     )
 
     # Create and run engine
@@ -149,4 +155,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

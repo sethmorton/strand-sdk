@@ -3,6 +3,7 @@
 from .constraints import BoundedConstraint, Direction
 from .engine import Engine, EngineConfig, EngineResults, IterationStats
 from .executors.pool import LocalPoolExecutor
+from .executors.torch import TorchExecutor
 from .interfaces import Evaluator, Executor, Strategy
 from .rules import Rules
 from .score import default_score
@@ -24,4 +25,5 @@ __all__ = [
     "default_score",
     "strategy_from_name",
     "LocalPoolExecutor",
+    "TorchExecutor",
 ]

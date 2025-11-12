@@ -5,9 +5,11 @@ from __future__ import annotations
 import random
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from strand.core.sequence import Sequence
 from strand.engine.interfaces import Strategy
+from strand.engine.runtime import StrategyCaps
 from strand.engine.types import Metrics
 
 
@@ -23,6 +25,7 @@ class RandomStrategy(Strategy):
     _best_score: float = field(default=float("-inf"), init=False, repr=False)
     _counter: int = field(default=0, init=False, repr=False)
     _rng: random.Random = field(init=False, repr=False)
+    _CAPS: ClassVar[StrategyCaps] = StrategyCaps()
 
     def __post_init__(self) -> None:
         """Validate the settings and initialize the random generator."""
@@ -67,3 +70,5 @@ class RandomStrategy(Strategy):
 
         return {"seed": self.seed, "generated": self._counter}
 
+    def strategy_caps(self) -> StrategyCaps:
+        return self._CAPS

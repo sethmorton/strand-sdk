@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 import cma
 
 from strand.core.sequence import Sequence
 from strand.engine.interfaces import Strategy
+from strand.engine.runtime import StrategyCaps
 from strand.engine.types import Metrics
 
 
@@ -51,6 +53,7 @@ class CMAESVarLenStrategy(Strategy):
     _best_sequence: Sequence | None = field(default=None, init=False, repr=False)
     _best_score: float = field(default=float("-inf"), init=False, repr=False)
     _counter: int = field(default=0, init=False, repr=False)
+    _CAPS: ClassVar[StrategyCaps] = StrategyCaps()
 
     def __post_init__(self) -> None:
         """Initialize strategy state."""
@@ -188,3 +191,5 @@ class CMAESVarLenStrategy(Strategy):
             "evaluations": self._es.countevals if hasattr(self._es, "countevals") else 0,
         }
 
+    def strategy_caps(self) -> StrategyCaps:
+        return self._CAPS

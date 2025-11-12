@@ -5,9 +5,11 @@ from __future__ import annotations
 import random
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from strand.core.sequence import Sequence
 from strand.engine.interfaces import Strategy
+from strand.engine.runtime import StrategyCaps
 from strand.engine.types import Metrics
 
 
@@ -33,6 +35,7 @@ class GAStrategy(Strategy):
     _best_sequence: Sequence | None = field(default=None, init=False, repr=False)
     _best_score: float = field(default=float("-inf"), init=False, repr=False)
     _counter: int = field(default=0, init=False, repr=False)
+    _CAPS: ClassVar[StrategyCaps] = StrategyCaps()
 
     def __post_init__(self) -> None:
         if not self.alphabet:
@@ -123,3 +126,6 @@ class GAStrategy(Strategy):
             "best_score": self._best_score,
             "population_size": len(self._population),
         }
+
+    def strategy_caps(self) -> StrategyCaps:
+        return self._CAPS

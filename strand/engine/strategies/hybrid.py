@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from strand.core.sequence import Sequence
 from strand.engine.interfaces import Strategy
+from strand.engine.runtime import StrategyCaps, StrategyContext, resolve_strategy_caps
 from strand.engine.types import Metrics
 
 
@@ -40,6 +41,7 @@ class HybridStrategy(Strategy):
     _best_sequence: Sequence | None = field(default=None, init=False, repr=False)
     _best_score: float = field(default=float("-inf"), init=False, repr=False)
     _strategy_scores: list[float] = field(default_factory=list, init=False, repr=False)
+    _caps: StrategyCaps = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Initialize strategy ensemble."""
@@ -52,6 +54,7 @@ class HybridStrategy(Strategy):
             )
         # Initialize strategy scores for weighted selection
         self._strategy_scores = [0.0] * len(self.strategies)
+        self._refresh_caps()
 
     def ask(self, n: int) -> list[Sequence]:
         """Ask all strategies for candidates.
@@ -72,7 +75,7 @@ class HybridStrategy(Strategy):
             self._strategy_idx += 1
             return strategy.ask(n)
 
-        elif self.selection_method == "best-of-generation":
+        if self.selection_method == "best-of-generation":
             # Get candidates from all strategies
             candidates = []
             candidates_per_strategy = n // len(self.strategies)
@@ -84,7 +87,7 @@ class HybridStrategy(Strategy):
 
             return candidates
 
-        elif self.selection_method == "weighted":
+        if self.selection_method == "weighted":
             # Allocate based on past performance
             total_score = sum(max(0.01, s) for s in self._strategy_scores)
             weights = [max(0.01, s) / total_score for s in self._strategy_scores]
@@ -96,8 +99,7 @@ class HybridStrategy(Strategy):
 
             return candidates[:n]
 
-        else:
-            raise ValueError(f"Unknown selection_method: {self.selection_method}")
+        raise ValueError(f"Unknown selection_method: {self.selection_method}")
 
     def tell(self, items: list[tuple[Sequence, float, Metrics]]) -> None:
         """Ingest evaluated candidates and update all strategies.
@@ -126,6 +128,30 @@ class HybridStrategy(Strategy):
                 best = strategy.best()
                 if best:
                     self._strategy_scores[i] = best[1]
+
+    def strategy_caps(self) -> StrategyCaps:
+        return self._caps
+
+    def prepare(self, context: StrategyContext) -> None:
+        for strategy in self.strategies:
+            prepare_fn = getattr(strategy, "prepare", None)
+            if callable(prepare_fn):
+                prepare_fn(context)
+
+    def train_step(
+        self,
+        items: list[tuple[Sequence, float, Metrics]],
+        context: StrategyContext,
+    ) -> None:
+        if not items:
+            return
+        for strategy in self.strategies:
+            caps = resolve_strategy_caps(strategy)
+            if not caps.supports_fine_tuning:
+                continue
+            train_fn = getattr(strategy, "train_step", None)
+            if callable(train_fn):
+                train_fn(items, context)
 
     def best(self) -> tuple[Sequence, float] | None:
         """Return the best sequence observed across all strategies.
@@ -165,6 +191,7 @@ class HybridStrategy(Strategy):
         """
         self.strategies.append(strategy)
         self._strategy_scores.append(0.0)
+        self._refresh_caps()
 
     def remove_strategy(self, index: int) -> None:
         """Remove a strategy from the ensemble.
@@ -180,6 +207,7 @@ class HybridStrategy(Strategy):
             raise ValueError("Cannot remove the last strategy")
         self.strategies.pop(index)
         self._strategy_scores.pop(index)
+        self._refresh_caps()
 
     def get_strategy_performance(self) -> list[tuple[str, float]]:
         """Get performance of each strategy.
@@ -197,3 +225,20 @@ class HybridStrategy(Strategy):
             results.append((name, score))
         return results
 
+    def _refresh_caps(self) -> None:
+        self._caps = self._aggregate_caps()
+
+    def _aggregate_caps(self) -> StrategyCaps:
+        child_caps = [resolve_strategy_caps(strategy) for strategy in self.strategies]
+        requires_runtime = any(cap.requires_runtime for cap in child_caps)
+        supports_fine_tuning = any(cap.supports_fine_tuning for cap in child_caps)
+        max_tokens_values = [cap.max_tokens_per_batch for cap in child_caps if cap.max_tokens_per_batch]
+        max_tokens = min(max_tokens_values) if max_tokens_values else None
+        disable_autocast = any(not cap.prefers_autocast for cap in child_caps)
+        # If any strategy opts out of autocast, honor that; otherwise default True
+        return StrategyCaps(
+            requires_runtime=requires_runtime,
+            supports_fine_tuning=supports_fine_tuning,
+            max_tokens_per_batch=max_tokens,
+            prefers_autocast=not disable_autocast,
+        )

@@ -51,6 +51,25 @@ results = engine.run()  # surface placeholder today
 
 **Important:** Constraint names must match `Metrics.constraints` keys. Missing keys will be treated as zero and warned once.
 
+### Batching & Device Hints
+
+Power users can keep this minimal surface and still opt into accelerator-aware training by supplying two optional dataclasses:
+
+```python
+from strand.engine.runtime import BatchConfig, DeviceConfig
+
+config = EngineConfig(
+    iterations=100,
+    population_size=512,
+    batching=BatchConfig(eval_size=64, train_size=16, max_tokens=2048),
+    device=DeviceConfig(target="cuda", mixed_precision="bf16", gradient_accumulation_steps=2),
+)
+```
+
+- `BatchConfig` caps executor batch sizes (count + total tokens) without rewriting your strategy.
+- `DeviceConfig` feeds the shared `ModelRuntime` (PyTorch + Accelerate) used by strategies/executors that advertise `strategy_caps()`.
+- If a strategy ignores these hints, the engine silently falls back to today’s behaviour.
+
 ## Next Steps
 
 - 📖 Mental Model (README) — Understand Strategy/Evaluator/Executor and the loop

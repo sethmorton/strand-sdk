@@ -70,6 +70,12 @@ results = engine.run()  # surface placeholder today
 - Wrap ML models or heuristics in an Evaluator (batched), then scale with an Executor
 - Add constraints by declaring `BoundedConstraint` instances; use `AdditiveLagrange` to enforce them
 
+## Accelerator-Aware Runs
+
+- `EngineConfig` accepts optional `batching` and `device` dataclasses so you can cap evaluation batch sizes (by count or token budget) and describe the desired compute target/mixed precision without touching existing call sites.
+- Strategies that expose `strategy_caps()` automatically receive a `StrategyContext` containing a lazily-initialized `ModelRuntime` (backed by PyTorch + Hugging Face Accelerate) so they can fine-tune large models without prop drilling.
+- Use `strand.engine.executors.torch.TorchExecutor` when running heavy evaluators: it pad-safely batches sequences according to both element count and total token budget while reusing the shared `ModelRuntime` autocast context.
+
 Reward blocks in `strand/rewards/` remain usable via the `RewardAggregator` evaluator. Current reward blocks are simple heuristics (e.g., hydrophobicity proxy for "stability", polar-residue fraction for "solubility"). The `model` parameter on these blocks is a provenance label only.
 
 **Important:** Constraint names must match `Metrics.constraints` keys; missing keys will be treated as zero (and warned once).

@@ -1,0 +1,199 @@
+"""Hybrid Strategy: Ensemble of multiple strategies working in parallel.
+
+Combines multiple strategies (Random, CEM, GA, CMA-ES, etc.) to explore
+the search space more effectively. Picks the best candidates from each
+strategy each generation.
+
+Inspired by portfolio/ensemble approaches in optimization.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+
+from strand.core.sequence import Sequence
+from strand.engine.interfaces import Strategy
+from strand.engine.types import Metrics
+
+
+@dataclass
+class HybridStrategy(Strategy):
+    """Ensemble strategy combining multiple sub-strategies.
+
+    Parameters
+    ----------
+    strategies : list[Strategy]
+        List of strategy instances to run in parallel.
+    selection_method : str
+        How to select from multiple strategies:
+        - "round-robin": Alternate between strategies
+        - "best-of-generation": Keep best from each strategy
+        - "weighted": Weight strategies by past performance
+    """
+
+    strategies: list[Strategy]
+    selection_method: str = "best-of-generation"
+
+    # Internal state
+    _strategy_idx: int = field(default=0, init=False, repr=False)
+    _best_sequence: Sequence | None = field(default=None, init=False, repr=False)
+    _best_score: float = field(default=float("-inf"), init=False, repr=False)
+    _strategy_scores: list[float] = field(default_factory=list, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Initialize strategy ensemble."""
+        if not self.strategies:
+            raise ValueError("Must provide at least one strategy")
+        if self.selection_method not in ("round-robin", "best-of-generation", "weighted"):
+            raise ValueError(
+                f"Unknown selection_method: {self.selection_method}. "
+                "Choose from: round-robin, best-of-generation, weighted"
+            )
+        # Initialize strategy scores for weighted selection
+        self._strategy_scores = [0.0] * len(self.strategies)
+
+    def ask(self, n: int) -> list[Sequence]:
+        """Ask all strategies for candidates.
+
+        Parameters
+        ----------
+        n : int
+            Total number of candidates to generate. Distributed across strategies.
+
+        Returns
+        -------
+        list[Sequence]
+            Sequences from all strategies (may exceed n if using ensemble approach).
+        """
+        if self.selection_method == "round-robin":
+            # Rotate through strategies
+            strategy = self.strategies[self._strategy_idx % len(self.strategies)]
+            self._strategy_idx += 1
+            return strategy.ask(n)
+
+        elif self.selection_method == "best-of-generation":
+            # Get candidates from all strategies
+            candidates = []
+            candidates_per_strategy = n // len(self.strategies)
+            remainder = n % len(self.strategies)
+
+            for i, strategy in enumerate(self.strategies):
+                count = candidates_per_strategy + (1 if i < remainder else 0)
+                candidates.extend(strategy.ask(count))
+
+            return candidates
+
+        elif self.selection_method == "weighted":
+            # Allocate based on past performance
+            total_score = sum(max(0.01, s) for s in self._strategy_scores)
+            weights = [max(0.01, s) / total_score for s in self._strategy_scores]
+
+            candidates = []
+            for i, strategy in enumerate(self.strategies):
+                count = max(1, int(n * weights[i]))
+                candidates.extend(strategy.ask(count))
+
+            return candidates[:n]
+
+        else:
+            raise ValueError(f"Unknown selection_method: {self.selection_method}")
+
+    def tell(self, items: list[tuple[Sequence, float, Metrics]]) -> None:
+        """Ingest evaluated candidates and update all strategies.
+
+        Parameters
+        ----------
+        items : list[tuple[Sequence, float, Metrics]]
+            List of (sequence, score, metrics) tuples.
+        """
+        if not items:
+            return
+
+        # Track best overall
+        for seq, score, _ in items:
+            if score > self._best_score:
+                self._best_score = score
+                self._best_sequence = seq
+
+        # Tell all strategies
+        for strategy in self.strategies:
+            strategy.tell(items)
+
+        # Update strategy scores for weighted selection
+        if self.selection_method == "weighted":
+            for i, strategy in enumerate(self.strategies):
+                best = strategy.best()
+                if best:
+                    self._strategy_scores[i] = best[1]
+
+    def best(self) -> tuple[Sequence, float] | None:
+        """Return the best sequence observed across all strategies.
+
+        Returns
+        -------
+        tuple[Sequence, float] | None
+            (best_sequence, best_score) or None if no sequences evaluated.
+        """
+        if self._best_sequence is None:
+            return None
+        return (self._best_sequence, self._best_score)
+
+    def state(self) -> Mapping[str, object]:
+        """Return serializable state of all sub-strategies.
+
+        Returns
+        -------
+        Mapping[str, object]
+            Combined state from all strategies.
+        """
+        return {
+            "best_score": self._best_score,
+            "selection_method": self.selection_method,
+            "num_strategies": len(self.strategies),
+            "strategy_scores": self._strategy_scores,
+            "strategy_states": [s.state() for s in self.strategies],
+        }
+
+    def add_strategy(self, strategy: Strategy) -> None:
+        """Add a new strategy to the ensemble at runtime.
+
+        Parameters
+        ----------
+        strategy : Strategy
+            Strategy instance to add.
+        """
+        self.strategies.append(strategy)
+        self._strategy_scores.append(0.0)
+
+    def remove_strategy(self, index: int) -> None:
+        """Remove a strategy from the ensemble.
+
+        Parameters
+        ----------
+        index : int
+            Index of strategy to remove.
+        """
+        if index < 0 or index >= len(self.strategies):
+            raise IndexError(f"Strategy index {index} out of range")
+        if len(self.strategies) == 1:
+            raise ValueError("Cannot remove the last strategy")
+        self.strategies.pop(index)
+        self._strategy_scores.pop(index)
+
+    def get_strategy_performance(self) -> list[tuple[str, float]]:
+        """Get performance of each strategy.
+
+        Returns
+        -------
+        list[tuple[str, float]]
+            List of (strategy_name, best_score) for each strategy.
+        """
+        results = []
+        for i, strategy in enumerate(self.strategies):
+            best = strategy.best()
+            score = best[1] if best else 0.0
+            name = f"Strategy {i}: {type(strategy).__name__}"
+            results.append((name, score))
+        return results
+

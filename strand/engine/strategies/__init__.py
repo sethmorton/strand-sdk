@@ -8,13 +8,10 @@ from __future__ import annotations
 from typing import Final
 
 from strand.engine.interfaces import Strategy
-from strand.engine.strategies.cem import CEMStrategy
-from strand.engine.strategies.cmaes import CMAESStrategy
-from strand.engine.strategies.cmaes_varlen import CMAESVarLenStrategy
-from strand.engine.strategies.ga import GAStrategy
-from strand.engine.strategies.hybrid import HybridStrategy
+from strand.engine.strategies.evolutionary import CEMStrategy, CMAESStrategy, CMAESVarLenStrategy, GAStrategy
+from strand.engine.strategies.ensemble import HybridStrategy
 from strand.engine.strategies.random import RandomStrategy
-from strand.engine.strategies.rl_policy import RLPolicyStrategy
+from strand.engine.strategies.rl import RLPolicyStrategy
 
 _REGISTRY: Final[dict[str, type[Strategy]]] = {
     "random": RandomStrategy,

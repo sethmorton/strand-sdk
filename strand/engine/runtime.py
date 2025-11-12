@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal as LiteralType
 
 import torch
 from accelerate import Accelerator
 from torch.optim import Optimizer
 
-Precision = Literal["no", "fp16", "bf16"]
+Precision = LiteralType["no", "fp16", "bf16"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,12 +36,51 @@ class BatchConfig:
 
 @dataclass(frozen=True, slots=True)
 class StrategyCaps:
-    """Strategy-declared capabilities used to negotiate runtime hooks."""
+    """Strategy capabilities - declare what your strategy needs/supports.
+
+    Start simple: by default, strategies need nothing special.
+    Add capabilities only as needed for advanced features.
+
+    Examples
+    --------
+    Simple strategy (no neural networks):
+    >>> caps = StrategyCaps()  # All defaults, works everywhere
+
+    Neural network strategy with GPU:
+    >>> caps = StrategyCaps(requires_runtime=True)  # Gets device management
+
+    RL strategy with supervision:
+    >>> caps = StrategyCaps(
+    ...     requires_runtime=True,
+    ...     supports_fine_tuning=True,
+    ...     kl_regularization="token",
+    ... )
+    """
 
     requires_runtime: bool = False
+    """If True, strategy needs device management (GPU, mixed-precision).
+    Default: False. Set True if using torch modules."""
+
     supports_fine_tuning: bool = False
+    """If True, strategy implements warm_start() for SFT pre-training.
+    Default: False. Set True for RL strategies."""
+
+    needs_sft_dataset: bool = False
+    """If True, strategy requires supervised data to function well.
+    Default: False. Engine warns if SFT data not provided."""
+
+    kl_regularization: LiteralType["none", "token", "sequence"] = "none"
+    """KL divergence regularization level.
+    Default: "none" (no KL penalty).
+    "token": Per-token KL. "sequence": Sequence-level KL."""
+
     max_tokens_per_batch: int | None = None
+    """Token budget per batch (for very large models).
+    Default: None (no limit). E.g., 2048 for context-limited models."""
+
     prefers_autocast: bool = True
+    """If True, strategy prefers mixed-precision training.
+    Default: True. Set False if strategy has numerical stability issues."""
 
 
 @dataclass(frozen=True, slots=True)

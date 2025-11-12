@@ -1,0 +1,49 @@
+# RPE (Retinal Pigment Epithelium) Reward Configuration
+# Optimizes for RPE-specific regulatory activity
+
+reward_blocks:
+  - name: "enformer_rpe"
+    type: "enformer"
+    weight: 0.6
+    config:
+      model_path: "checkpoints/enformer_base.pt"
+      model_type: "pytorch"
+      target_cell_types: ["RPE"]
+      aggregation: "mean"
+      normalization: "zscore"
+      device: "cuda"
+      batch_size: 32
+
+  - name: "tfbs_pigment"
+    type: "tfbs"
+    weight: 0.4
+    config:
+      motif_names: ["OTX2", "MITF", "PAX6", "RAX"]
+      target_frequency:
+        OTX2: 0.20
+        MITF: 0.20
+        PAX6: 0.15
+        RAX: 0.10
+      threshold: 0.7
+      aggregation: "correlation"
+      return_constraint_channel: true
+
+constraints:
+  - name: "gc_content"
+    min: 0.40
+    max: 0.70
+    penalty: 0.5
+
+  - name: "tfbs_divergence"
+    source: "tfbs_pigment"
+    channel: "tfbs_divergence"
+    max: 0.2
+    penalty: 1.0
+
+metadata:
+  cell_type: "RPE"
+  description: "Optimize for retinal pigment epithelium regulatory activity"
+  references:
+    - "Enformer: Avsec et al., Nature Methods 2021"
+    - "JASPAR: Fornes et al., NAR 2020"
+

@@ -1,4 +1,13 @@
-"""Reward block factory exports."""
+"""Reward blocks for sequence optimization.
+
+Progressive Disclosure:
+- **Basic**: GC content, length, novelty (start here)
+- **Advanced**: Enformer, TFBS (require foundation models)
+
+Import by category:
+    from strand.rewards.basic import GCContentBlock
+    from strand.rewards.advanced import EnformerRewardBlock
+"""
 
 from __future__ import annotations
 

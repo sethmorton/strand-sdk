@@ -141,3 +141,4 @@ class CEMStrategy(Strategy):
 
     def strategy_caps(self) -> StrategyCaps:
         return self._CAPS
+

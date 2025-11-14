@@ -10,6 +10,7 @@ Strand is a production-ready optimization engine for biological sequences. Compo
 - Device-aware runtimes via `StrategyContext` plus a shared `StrategyRuntimeAdapter`
 - Foundation-model loader (`strand/models/hyenadna.py`) and pluggable RL policy heads for HyenaDNA/Transformer backbones
 - Reward blocks ranging from heuristics (GC, stability, novelty) to Enformer and TFBS correlation
+- Variant-triage support for rare-disease regulatory optimization with deterministic reward blocks (Enformer, JASPAR, conservation)
 - Adaptive constraints powered by `DualVariableManager` + manifest-friendly logging
 - SequenceDataset utilities, dataset prep scripts, and built-in supervised warm-start hooks for Ctrl-DNA style workflows
 - Config-driven CLI (`strand run ctrl-dna.yaml`) to assemble engines without bespoke scripts
@@ -30,10 +31,10 @@ Strand is a production-ready optimization engine for biological sequences. Compo
 
 ```bash
 # from strand-sdk root
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
-pip install -e .
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv venv
+uv pip sync requirements-dev.txt
+uv pip install -e .
 ```
 
 **Level 1 — Basic (5 minutes):**

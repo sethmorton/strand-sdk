@@ -172,3 +172,7 @@ release%2F*/
 # User scripts and temporary
 /src/
 
+# Marimo session caches (generated during notebook execution)
+**/__marimo__/
+*.marimo
+

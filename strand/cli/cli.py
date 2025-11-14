@@ -37,6 +37,19 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser = subparsers.add_parser("run", help="Run an experiment from a config file")
     run_parser.add_argument("config", help="Path to YAML/JSON config file")
 
+    # Variant triage subcommand
+    vt_parser = subparsers.add_parser(
+        "run-variant-triage",
+        help="Run variant triage optimization from config"
+    )
+    vt_parser.add_argument("config", help="Path to variant triage YAML config file")
+    vt_parser.add_argument(
+        "--device",
+        choices=["cpu", "cuda", "auto"],
+        default="auto",
+        help="Device for computation (default: auto)"
+    )
+
     return parser
 
 
@@ -46,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run":
         return _run_from_config(Path(args.config))
+    elif args.command == "run-variant-triage":
+        return _run_variant_triage(Path(args.config), args.device)
 
     parser.print_help()
     return 0
@@ -220,6 +235,20 @@ def _build_dual_manager(cfg: dict[str, Any] | None) -> DualVariableSet | None:
             max_weight=entry.get("max_weight", 100.0),
         )
     return manager
+
+
+def _run_variant_triage(config_path: Path, device: str) -> int:
+    """Run variant triage optimization from config."""
+    try:
+        from strand.cli.commands.run_variant_triage import run_variant_triage_pipeline
+    except ImportError as e:
+        raise RuntimeError(
+            f"Variant triage command requires additional dependencies. "
+            f"Install with: pip install strand-sdk[variant-triage]. Error: {e}"
+        )
+
+    run_variant_triage_pipeline(config_path, device)
+    return 0
 
 
 class _SimpleDNATokenizer:

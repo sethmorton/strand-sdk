@@ -1,6 +1,6 @@
 # Quick Start
 
-This guide shows the smallest possible Strand optimization loop using the **real** SDK surfaces that ship today. Copy the snippets into a fresh virtual environment after installing the SDK in editable mode (`pip install -e .`).
+This guide shows the smallest possible Strand optimization loop using the **real** SDK surfaces that ship today. Copy the snippets into a fresh virtual environment after installing the SDK in editable mode (`uv pip install -e .`).
 
 ## 1. Minimal Engine Run
 

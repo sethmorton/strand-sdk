@@ -4,16 +4,17 @@ The Strand SDK packages strategies, evaluators, and runtime helpers so you can o
 
 ## Quick Setup
 
-1. **Create a Python 3.11+ environment.**
+1. **Install uv and create environment.**
    ```bash
-   python -m venv .venv
-   source .venv/bin/activate
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   uv venv
+   source .venv/bin/activate  # or uv run for one-off commands
    ```
 
 2. **Install the SDK.**
    ```bash
-   pip install -r requirements-dev.txt
-   pip install -e .
+   uv pip sync requirements-dev.txt
+   uv pip install -e .
    ```
 
 ## Your First Optimization
@@ -64,6 +65,48 @@ strategy = RLPolicyStrategy(alphabet="ACGT", min_len=50, max_len=200)
 ```
 
 `Engine` automatically calls `strategy.prepare(context)`, runs `warm_start(...)` once if you pass an `SFTConfig`, and invokes `train_step(...)` each iteration so the policy can blend SFT + RL without extra plumbing.
+
+### Variant Triage: Rare Disease Optimization
+
+For genomic variant analysis and regulatory element optimization, install the variant-triage extras and use context-aware reward blocks:
+
+```bash
+uv pip install strand-sdk[variant-triage]
+```
+
+```python
+from strand.data.variant_dataset import VariantDataset
+from strand.evaluators.variant_composite import VariantCompositeEvaluator
+from strand.evaluators.reward_aggregator import RewardAggregator
+from strand.rewards.virtual_cell_delta import VirtualCellDeltaReward
+from strand.rewards.motif_delta import MotifDeltaReward
+from strand.rewards.conservation import ConservationReward
+
+# Load variants with genomic context
+dataset = VariantDataset(
+    vcf_path="variants.vcf.gz",
+    fasta_path="reference.fa",
+    window_size=1000
+)
+
+# Context-aware rewards for variant triage
+rewards = RewardAggregator([
+    VirtualCellDeltaReward(model_path="enformer-base", weight=0.5),
+    MotifDeltaReward(tf_list=["MA0001", "MA0002"], weight=0.3),
+    ConservationReward(bw_path="phylop.bw", weight=0.2),
+])
+
+# Variant-aware evaluator with constraints
+evaluator = VariantCompositeEvaluator(
+    rewards=rewards,
+    include_gc=True,
+    include_motif_disruption=True
+)
+
+# Use with any strategy - CMA-ES works well for this
+```
+
+Or run from config: `strand run-variant-triage configs/examples/rare_variant_triage/rare_variant_triage.yaml`
 
 ### Supervised Datasets & Scripts
 

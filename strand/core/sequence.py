@@ -12,9 +12,9 @@ class Sequence:
 
     id: str
     tokens: str
-    metadata: Mapping[str, int | float | str] = field(default_factory=dict)
+    metadata: Mapping[str, object] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, int | float | str]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "id": self.id,
             "tokens": self.tokens,

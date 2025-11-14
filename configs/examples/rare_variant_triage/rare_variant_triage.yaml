@@ -1,0 +1,141 @@
+# Rare Variant Triage Configuration
+# ================================
+#
+# This configuration demonstrates end-to-end variant triage optimization
+# for rare disease regulatory element discovery. It combines:
+#
+# - Variant dataset loading from VCF + reference FASTA
+# - Foundation model predictions (Enformer)
+# - Motif analysis (JASPAR + MOODS)
+# - Conservation scoring (PhyloP tracks)
+# - Sequence constraints (GC content, length)
+#
+# Usage:
+#   pip install strand-sdk[variant-triage]
+#   strand run-variant-triage configs/examples/rare_variant_triage/rare_variant_triage.yaml
+#
+# To override parameters:
+#   strand run-variant-triage configs/examples/rare_variant_triage/rare_variant_triage.yaml \
+#     --device cuda
+
+# Dataset Configuration
+# =====================
+dataset:
+  # Dataset type (must be "variant_vcf" for variant triage)
+  type: "variant_vcf"
+
+  # Path to VCF file containing variants
+  vcf_path: "path/to/variants.vcf.gz"
+
+  # Path to reference FASTA file
+  fasta_path: "path/to/reference.fa"
+
+  # Genomic window size around each variant (base pairs)
+  window_size: 1000
+
+# Reward Block Configuration
+# ==========================
+rewards:
+  # Virtual Cell Delta (Enformer-based)
+  # Measures change in regulatory activity predictions
+  - type: "virtual_cell_delta"
+    config:
+      model_path: "enformer-base"  # HuggingFace model ID
+      device: "auto"               # auto, cpu, cuda, cuda:0, etc.
+      target_cell_types: []        # Empty = all cell types
+      weight: 0.5
+
+  # Motif Delta (JASPAR + MOODS)
+  # Measures transcription factor binding site changes
+  - type: "motif_delta"
+    config:
+      tf_list: ["MA0001", "MA0002", "MA0003"]  # JASPAR accession IDs
+      threshold: 6.0                           # Log-odds threshold
+      background_freq: [0.25, 0.25, 0.25, 0.25]  # A,C,G,T frequencies
+      weight: 0.3
+
+  # Conservation (bigWig tracks)
+  # Measures evolutionary conservation changes
+  - type: "conservation"
+    config:
+      bw_path: "path/to/phylop.bw"  # PhyloP or similar conservation track
+      agg_method: "mean"           # mean, max, sum, min
+      weight: 0.2
+
+# Evaluator Configuration
+# =======================
+evaluator:
+  # Evaluator type (must be "variant_composite" for variant triage)
+  type: "variant_composite"
+
+  # Sequence-level constraints
+  include_length: true      # Penalize length deviations
+  include_gc: true          # Penalize GC content deviations
+
+  # Variant-specific constraints
+  include_motif_disruption: true     # Flag motif loss
+  include_conservation_windows: true # Include conservation scores
+
+# Engine Configuration
+# ====================
+engine:
+  # Optimization method
+  method: "cmaes"
+
+  # Number of optimization iterations
+  iterations: 50
+
+  # Population size per iteration
+  population_size: 100
+
+  # Random seed for reproducibility
+  seed: 1337
+
+  # Timeout per evaluation (seconds)
+  timeout_s: 300.0
+
+  # Device configuration
+  device:
+    target: "auto"          # auto, cpu, cuda, cuda:0, etc.
+    mixed_precision: "no"   # no, fp16, bf16
+
+  # Batch configuration
+  batching:
+    eval_size: 4            # Batch size for evaluation
+    train_size: null        # Not used for CMA-ES
+    max_tokens: null        # Not used for CMA-ES
+
+# Executor Configuration
+# ======================
+executor:
+  # Executor type for GPU-bound evaluations
+  type: "torch"
+
+  # Device for torch operations
+  device: "auto"  # auto, cpu, cuda, cuda:0, etc.
+
+  # Batch size for model inference
+  batch_size: 4
+
+# Notes
+# =====
+notes: |
+  This configuration demonstrates a complete rare variant triage pipeline:
+
+  1. Load variants from VCF and extract genomic context from FASTA
+  2. Evaluate each variant using three complementary reward blocks:
+     - Virtual Cell: Foundation model predictions of regulatory activity
+     - Motif Delta: TF binding site preservation/loss
+     - Conservation: Evolutionary constraint analysis
+  3. Apply sequence constraints (GC, length) and variant constraints
+  4. Optimize using CMA-ES to find variants with maximal regulatory impact
+
+  Key considerations:
+  - Install dependencies: pip install strand-sdk[variant-triage]
+  - GPU recommended for Enformer inference (batch_size=4 uses ~8GB VRAM)
+  - Adjust window_size based on regulatory element size expectations
+  - TF selection in motif_delta should match disease-relevant factors
+  - Conservation tracks should match genome build of your FASTA
+
+  Expected runtime: ~5-15 minutes per variant depending on hardware
+  Output: Optimized variant sequences with improved regulatory scores

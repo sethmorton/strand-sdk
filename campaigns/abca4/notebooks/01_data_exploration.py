@@ -9,7 +9,7 @@ from pathlib import Path
 CAMPAIGN_ROOT = Path(__file__).resolve().parents[2]
 FEATURE_MATRIX = CAMPAIGN_ROOT / "data_processed" / "features" / "abca4_feature_matrix.parquet"
 
-mo.md("# 🔬 ABCA4 Variant Explorer")
+mo.md("# 🔬 ABCA4 Variant Explorer - Marimo Notebook")
 mo.md(
     """
 Use the controls below to slice the unified ABCA4 feature matrix. Every widget is

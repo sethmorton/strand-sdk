@@ -64,11 +64,12 @@ class RewardAggregator(Evaluator):
             for block in self.reward_blocks:
                 if block.metadata.requires_context:
                     objective, aux = block.score_context(context, reward_context=reward_context)
+                    weighted_objective = block.weight * objective
                 else:
-                    objective = block.score(context.alt_seq, context=reward_context)
+                    weighted_objective = block.score(context.alt_seq, context=reward_context)
                     aux = {}
 
-                total_objective += block.weight * objective
+                total_objective += weighted_objective
 
                 if aux:
                     for key, value in aux.items():

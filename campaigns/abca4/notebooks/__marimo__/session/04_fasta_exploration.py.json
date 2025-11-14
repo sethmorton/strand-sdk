@@ -6,7 +6,7 @@
   "cells": [
     {
       "id": "Hbol",
-      "code_hash": "1fe29915f8985e65a5f3820e10c5da97",
+      "code_hash": "184f88a4461485d791dcab4e921eab5c",
       "outputs": [
         {
           "type": "data",
@@ -19,7 +19,7 @@
     },
     {
       "id": "MJUe",
-      "code_hash": "1fd6580369c2fb42af80e1aa741b82df",
+      "code_hash": "f1b5a57c3d5450d04ce5fc3f53fd78c6",
       "outputs": [
         {
           "type": "data",
@@ -28,14 +28,20 @@
           }
         }
       ],
-      "console": [
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "1bda80f2be4d3658e0baa43fbe7ae8c1",
+      "outputs": [
         {
-          "type": "stream",
-          "name": "stdout",
-          "text": "_md()\n",
-          "mimetype": "text/plain"
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u26a0\ufe0f FASTA file not found at <code>/Users/sethmorton/Desktop/codingplayground/strand-sdk/campaigns/abca4/data_raw/sequences/ABCA4_P78363.fasta</code></span></span>"
+          }
         }
-      ]
+      ],
+      "console": []
     }
   ]
 }

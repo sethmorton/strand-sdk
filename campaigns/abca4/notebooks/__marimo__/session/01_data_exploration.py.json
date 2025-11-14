@@ -5,6 +5,19 @@
   },
   "cells": [
     {
+      "id": "DnEU",
+      "code_hash": "4d113ffa72f772782c48a7719770148a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"tips\">Tips</h3>\n<ul>\n<li>Run <code>invoke features.compute</code> whenever new raw data lands, then refresh this notebook.</li>\n<li>Use the ranking weights to mimic optimization objectives before invoking Strand strategies.</li>\n<li>Export the top variants directly as CSV/Parquet for ML or reporting notebooks.</li>\n</ul></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
       "id": "Hbol",
       "code_hash": "b82fb8562911e7e5283345f53fd00e8f",
       "outputs": [
@@ -45,137 +58,223 @@
     },
     {
       "id": "bkHC",
-      "code_hash": "43ba6a59f0913b31c7e208f8128e61c2",
+      "code_hash": "9e2b0677e95d989a497685eb271d0873",
       "outputs": [
         {
-          "type": "error",
-          "ename": "syntax",
-          "evalue": "line 3\nSyntaxError: 'return' outside function\n",
-          "traceback": []
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
         }
       ],
       "console": []
     },
     {
       "id": "lEQa",
-      "code_hash": "d2734d50b03cf2320992473876e3aeab",
+      "code_hash": "f52d95b363dd1832470d2a3eb803aebe",
       "outputs": [
         {
-          "type": "error",
-          "ename": "exception",
-          "evalue": "name 'feature_matrix' is not defined",
-          "traceback": []
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
         }
       ],
-      "console": [
-        {
-          "type": "stream",
-          "name": "stderr",
-          "text": "<span class=\"codehilite\"><div class=\"highlight\"><pre><span></span><span class=\"gt\">Traceback (most recent call last):</span>\n  File <span class=\"nb\">&quot;/tmp/marimo_32339/__marimo__cell_lEQa_.py&quot;</span>, line <span class=\"m\">1</span>, in <span class=\"n\">&lt;module&gt;</span>\n<span class=\"w\">    </span><span class=\"n\">df_features</span> <span class=\"o\">=</span> <span class=\"n\">feature_matrix</span><span class=\"p\">()</span>\n<span class=\"w\">                  </span><span class=\"pm\">^^^^^^^^^^^^^^</span>\n<span class=\"gr\">NameError</span>: <span class=\"n\">name &#39;feature_matrix&#39; is not defined</span>\n</pre></div>\n</span>",
-          "mimetype": "application/vnd.marimo+traceback"
-        }
-      ]
+      "console": []
     },
     {
       "id": "PKri",
-      "code_hash": "f52d95b363dd1832470d2a3eb803aebe",
-      "outputs": [],
+      "code_hash": "2a0ffeb3f4979f854f8749e01508ad15",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "Xref",
-      "code_hash": "2db05713fd63eaf0d5740a2efdd19c91",
-      "outputs": [],
+      "code_hash": "4117145c78a939cc01175c25ea284e9a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "SFPL",
-      "code_hash": "155a7033f41ba0e4df548c53f654fb03",
-      "outputs": [],
+      "code_hash": "c3201cc75bb6799148cd0743e627e2dd",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "BYtC",
-      "code_hash": "737b8085306d5c63bfddddc52deb846c",
-      "outputs": [],
+      "code_hash": "244b322daac235e9b0b39fc92e5ec8dc",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "RGSE",
-      "code_hash": "db8f864a77c322eb5e150502017a1aa4",
-      "outputs": [],
+      "code_hash": "2cbcf348a644d1f45ee277eb16d33361",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "Kclp",
-      "code_hash": "1188344571020d7042d7ccbe1ff130fb",
-      "outputs": [],
+      "code_hash": "3f7e469d4ffeb75f98eb2bc6b1653dd8",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "emfo",
-      "code_hash": "19729883bc4760dbaf78f8fe79e727d6",
-      "outputs": [],
+      "code_hash": "2d638a0206c8a3d54a56befd85f6b52d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">No data loaded.</span></span>"
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "Hstk",
-      "code_hash": "1870a3d1048ca29045b6cfafec3cc52c",
-      "outputs": [],
+      "code_hash": "c3f15e69e5c665ab0204a45bb258e29d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "nWHF",
-      "code_hash": "6990cd8642a7bdf84b14200a24bcd8e1",
-      "outputs": [],
+      "code_hash": "48c94fe78b10d983a298f74c4c719deb",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">No variants met the criteria.</span></span>"
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "iLit",
-      "code_hash": "e42e74b36e7b6b13c9b85f0845c31fb8",
-      "outputs": [],
+      "code_hash": "1eb1e24573e2b9975ab3fe7c33452742",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "ZHCJ",
-      "code_hash": "93298571775c81cfb5bee1b2d85fd55c",
-      "outputs": [],
+      "code_hash": "05f4fba01d67fe618e5fbc8c461b79ae",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Nothing to visualize yet \u2013 adjust your filters.</span></span>"
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "ROlb",
-      "code_hash": "4c8d088afe5c4ee7ac1f989b947fd3ab",
-      "outputs": [],
+      "code_hash": "ee60f88848e48f79fbcf79d14f7491ef",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "qnkX",
-      "code_hash": "3868b41d633955add4ed88d000174044",
-      "outputs": [],
+      "code_hash": "6c75913755534318af69102069460d02",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Domain annotations unavailable.</span></span>"
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "TqIu",
-      "code_hash": "da0a0110e7597e07259a665182b19d3b",
-      "outputs": [],
+      "code_hash": "4d9aa6341544a9aaec000cc739f2345b",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "Vxnm",
-      "code_hash": "081d3a237a166e0b6cc29b179ac92166",
-      "outputs": [],
-      "console": []
-    },
-    {
-      "id": "DnEU",
-      "code_hash": "ea5db3f88a946681bf9dae70dc45b680",
-      "outputs": [],
-      "console": []
-    },
-    {
-      "id": "ulZA",
-      "code_hash": "885c836bb6e9174feb5a41fa235b2558",
-      "outputs": [],
+      "code_hash": "34b9e759fee730cb44ed53b8453e14a3",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Nothing to export.</span></span>"
+          }
+        }
+      ],
       "console": []
     }
   ]

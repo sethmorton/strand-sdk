@@ -25,7 +25,6 @@ def _():
                 seq_lines.append(line)
         return "".join(seq_lines)
 
-
     def find_motifs(seq):
         """
         Find:
@@ -35,7 +34,7 @@ def _():
         """
 
         # Walker A / P-loop motif (ATP-binding):
-        # GxxxxGKST is canonical; we’ll allow S or T in the last position: GxxxxGK[ST]
+        # GxxxxGKST is canonical; we'll allow S or T in the last position: GxxxxGK[ST]
         atp_pattern = re.compile(r"G....GK[ST]")
 
         # N-glycosylation motif:
@@ -61,61 +60,43 @@ def _():
                 "start": start,
                 "end": end,
             })
-        FASTA_PATH = "strand-sdk/campaigns/abca4/data_raw/sequences/ABCA4_P78363.fasta"   # <-- put your FASTA file path here
-        seq = read_fasta_sequence(FASTA_PATH)
-        motifs = find_motifs(seq)
-
-        print("ATP-binding-like motifs (GxxxxGK[ST]):")
-        for site in motifs["atp_sites"]:
-            print(f"  {site['motif']}  at {site['start']}-{site['end']}")
-
-        print("\nN-glycosylation motifs (N[^P][ST][^P]):")
-        for site in motifs["nglyc_sites"]:
-            print(f"  {site['motif']}  at {site['start']}-{site['end']}")
 
         return {"atp_sites": atp_sites, "nglyc_sites": nglyc_sites}
 
+    return read_fasta_sequence, find_motifs
+
 
 @app.cell
-def _():
+def __(read_fasta_sequence, find_motifs):
     import marimo as mo
-    from Bio import SeqIO
     from pathlib import Path
 
-    FASTA_PATH = "strand-sdk/campaigns/abca4/data_raw/sequences/ABCA4_P78363.fasta"
-
-
-    # Point this to your FASTA file
-    fasta_path = Path(FASTA_PATH)
+    # Use Path(__file__) to compute the path relative to this notebook
+    notebook_dir = Path(__file__).resolve().parent
+    fasta_path = notebook_dir.parent / "data_raw" / "sequences" / "ABCA4_P78363.fasta"
 
     try:
-        records = list(SeqIO.parse(fasta_path, "fasta"))
+        seq = read_fasta_sequence(str(fasta_path))
+        motifs = find_motifs(seq)
+        
+        atp_output = mo.md("**ATP-binding-like motifs (GxxxxGK[ST]):**\n")
+        for site in motifs["atp_sites"]:
+            atp_output = atp_output.concat(mo.md(f"- {site['motif']} at {site['start']}-{site['end']}"))
+        
+        nglyc_output = mo.md("\n**N-glycosylation motifs (N[^P][ST][^P]):**\n")
+        for site in motifs["nglyc_sites"]:
+            nglyc_output = nglyc_output.concat(mo.md(f"- {site['motif']} at {site['start']}-{site['end']}"))
+        
+        view = mo.vstack([atp_output, nglyc_output])
     except FileNotFoundError:
         view = mo.md(f"⚠️ FASTA file not found at `{fasta_path}`")
-    else:
-        if not records:
-            view = mo.md("No sequences found in FASTA file.")
-        else:
 
-            rows = [
-                {
-                    "id": r.id,
-                    "description": r.description,
-                    "length": len(r.seq),
-                    "sequence": str(r.seq),
-                }
-                for r in records
-            ]
-            view = mo.ui.table(rows)
-            with open(fasta_path, "r") as f:
-                for line in f:
-                    if line.startswith(">"):
-                        print(line)
-                    else:
-                        print(line)
+    return view,
 
-    print(view)
-    return view
+@app.cell
+def __(view):
+    view
+    return
 
 if __name__ == "__main__":
     app.run()

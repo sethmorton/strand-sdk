@@ -10,6 +10,8 @@ self-contained:
 - `data_raw/`, `data_processed/` – campaign-specific artifacts (ignored by git).
 - `tasks.py` – Invoke entrypoint for campaign automation.
 
+## Quick Start
+
 Run tasks from the repo root as usual:
 
 ```bash

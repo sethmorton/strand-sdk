@@ -3,16 +3,78 @@
 
 import marimo
 
+__generated_with = "0.17.8"
 app = marimo.App()
 
+
+
+
 @app.cell
-def __():
+def _():
+    import re
+
+    def read_fasta_sequence(path):
+        """Read the first sequence from a FASTA file and return it as a single string."""
+        seq_lines = []
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith(">"):
+                    # header line – skip for now
+                    continue
+                seq_lines.append(line)
+        return "".join(seq_lines)
+
+
+    def find_motifs(seq):
+        """
+        Find:
+        - ATP-binding P-loop/Walker A–like motifs: GxxxxGK[ST]
+        - N-glycosylation motifs: N{P}[ST]{P}
+        Returns dict with lists of hits.
+        """
+
+        # Walker A / P-loop motif (ATP-binding):
+        # GxxxxGKST is canonical; we’ll allow S or T in the last position: GxxxxGK[ST]
+        atp_pattern = re.compile(r"G....GK[ST]")
+
+        # N-glycosylation motif:
+        # N{P}[ST]{P}  -> N-X-S/T, where X != P and last != P
+        nglyc_pattern = re.compile(r"N[^P][ST][^P]")
+
+        atp_sites = []
+        for m in atp_pattern.finditer(seq):
+            start = m.start() + 1  # 1-based indexing
+            end = m.end()
+            atp_sites.append({
+                "motif": m.group(),
+                "start": start,
+                "end": end,
+            })
+
+        nglyc_sites = []
+        for m in nglyc_pattern.finditer(seq):
+            start = m.start() + 1
+            end = m.end()
+            nglyc_sites.append({
+                "motif": m.group(),
+                "start": start,
+                "end": end,
+            })
+
+        return {"atp_sites": atp_sites, "nglyc_sites": nglyc_sites}
+
+
+@app.cell
+def _():
     import marimo as mo
     from Bio import SeqIO
     from pathlib import Path
 
     # Point this to your FASTA file
-    fasta_path = Path("/home/ae25872/codebase/kleon/strand-sdk/campaigns/abca4/data_raw/sequences/ABCA4_P78363.fasta")
+    fasta_path = Path("/Users/sanjukta/strand-sdk/campaigns/abca4/data_raw/sequences/ABCA4_P78363.fasta")
 
     try:
         records = list(SeqIO.parse(fasta_path, "fasta"))
@@ -22,6 +84,7 @@ def __():
         if not records:
             view = mo.md("No sequences found in FASTA file.")
         else:
+
             rows = [
                 {
                     "id": r.id,
@@ -32,9 +95,30 @@ def __():
                 for r in records
             ]
             view = mo.ui.table(rows)
+            with open(fasta_path, "r") as f:
+                for line in f:
+                    if line.startswith(">"):
+                        print(line)
+                    else:
+                        print(line)
 
     # ⬇️ last expression is the cell output
-    view
+    return view
+
+    if __name__ == "__main__":
+        fasta_path = "/Users/sanjukta/strand-sdk/campaigns/abca4/data_raw/sequences/ABCA4_P78363.fasta"   # <-- put your FASTA file path here
+        seq = read_fasta_sequence(fasta_path)
+        motifs = find_motifs(seq)
+
+        print("ATP-binding-like motifs (GxxxxGK[ST]):")
+        for site in motifs["atp_sites"]:
+            print(f"  {site['motif']}  at {site['start']}-{site['end']}")
+
+        print("\nN-glycosylation motifs (N[^P][ST][^P]):")
+        for site in motifs["nglyc_sites"]:
+            print(f"  {site['motif']}  at {site['start']}-{site['end']}")
+
+    return
 
 
 if __name__ == "__main__":

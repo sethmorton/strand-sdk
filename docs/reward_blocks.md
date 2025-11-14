@@ -30,7 +30,7 @@ These blocks require sequence context (reference + alternative variants) and are
 | MotifDelta | `strand.rewards.motif_delta` | JASPAR+MOODS TF motif presence delta | TF binding site preservation |
 | Conservation | `strand.rewards.conservation` | pyBigWig conservation track scoring | Evolutionary constraint analysis |
 
-**Installation:** `pip install strand-sdk[variant-triage]`
+**Installation:** `uv pip install strand-sdk[variant-triage]`
 
 **Example Configuration:**
 ```yaml
@@ -53,7 +53,7 @@ rewards:
       weight: 0.2
 ```
 
-Use extras to install dependencies, e.g. `pip install strand-sdk[variant-triage]`.
+Use extras to install dependencies, e.g. `uv pip install strand-sdk[variant-triage]`.
 
 ## Example: Aggregating Blocks
 

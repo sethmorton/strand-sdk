@@ -137,3 +137,38 @@ results/
 examples/output/
 benchmarks/output/
 
+# Campaign data (large binary files)
+campaigns/**/data_raw/
+campaigns/**/data_processed/
+campaigns/**/.venv/
+
+# MLflow runs and artifacts
+mlruns/
+.mlflow/
+
+# Machine Learning / Model files
+*.pkl
+*.h5
+*.hdf5
+*.onnx
+*.pb
+*.tflite
+*.joblib
+*.model
+*.weights
+*.ckpt
+*.pth
+*.pt
+*.bin
+*.safetensors
+
+# Broken downloads
+ref%2F*/
+release%2F*/
+
+# UV lock file (optional - include for reproducibility)
+# uv.lock
+
+# User scripts and temporary
+/src/
+

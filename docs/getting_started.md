@@ -4,16 +4,17 @@ The Strand SDK packages strategies, evaluators, and runtime helpers so you can o
 
 ## Quick Setup
 
-1. **Create a Python 3.11+ environment.**
+1. **Install uv and create environment.**
    ```bash
-   python -m venv .venv
-   source .venv/bin/activate
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   uv venv
+   source .venv/bin/activate  # or uv run for one-off commands
    ```
 
 2. **Install the SDK.**
    ```bash
-   pip install -r requirements-dev.txt
-   pip install -e .
+   uv pip sync requirements-dev.txt
+   uv pip install -e .
    ```
 
 ## Your First Optimization
@@ -70,7 +71,7 @@ strategy = RLPolicyStrategy(alphabet="ACGT", min_len=50, max_len=200)
 For genomic variant analysis and regulatory element optimization, install the variant-triage extras and use context-aware reward blocks:
 
 ```bash
-pip install strand-sdk[variant-triage]
+uv pip install strand-sdk[variant-triage]
 ```
 
 ```python

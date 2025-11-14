@@ -31,10 +31,10 @@ Strand is a production-ready optimization engine for biological sequences. Compo
 
 ```bash
 # from strand-sdk root
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
-pip install -e .
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv venv
+uv pip sync requirements-dev.txt
+uv pip install -e .
 ```
 
 **Level 1 — Basic (5 minutes):**

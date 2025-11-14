@@ -15,7 +15,7 @@ Rare variant triage involves:
 ## Installation
 
 ```bash
-pip install strand-sdk[variant-triage]
+uv pip install strand-sdk[variant-triage]
 ```
 
 This installs the core SDK plus dependencies for:
@@ -277,7 +277,7 @@ Run with: `strand run-variant-triage rare_variant_triage.yaml --device cuda`
 
 ### Common Issues
 
-1. **Import Errors**: Ensure `pip install strand-sdk[variant-triage]`
+1. **Import Errors**: Ensure `uv pip install strand-sdk[variant-triage]`
 2. **CUDA OOM**: Reduce batch_size in executor config
 3. **Slow Inference**: Use GPU device for Enformer
 4. **No Motifs Found**: Check JASPAR accession IDs are valid

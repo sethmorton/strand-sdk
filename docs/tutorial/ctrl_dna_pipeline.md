@@ -83,7 +83,7 @@ reward_blocks = [
 rewards = RewardAggregator(reward_blocks)
 ```
 
-Install extra dependencies with `pip install -e .[models,inference]` before using Enformer/TFBS blocks.
+Install extra dependencies with `uv pip install -e .[models,inference]` before using Enformer/TFBS blocks.
 
 ## 4. Constraints & Dual Variables
 

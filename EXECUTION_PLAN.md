@@ -22,6 +22,26 @@ Key outcomes:
 
 ---
 
+## Data & Infrastructure Foundation
+
+**Status:** ✅ **Completed** - [Data Source & Orchestration Report](docs/research/abca4_campaign/data_source_and_orchestration_report.md)
+
+**Summary:** Comprehensive audit of ABCA4 campaign data sources, package versions, and orchestration strategy completed. Full `uv` + Marimo integration finalized across all documentation. Ready for implementation with modern, reproducible Python tooling.
+
+**Key Deliverables:**
+- ✅ **Verified access** to ClinVar, gnomAD, SpliceAI/AlphaMissense data sources
+- ✅ **Package matrix** with latest versions including Marimo 0.17.8 for reactive notebooks
+- ✅ **Complete uv integration** across README, docs, and tutorials
+- ✅ **Orchestration recommendation**: `uv` + `invoke` + `marimo` + MLflow for reproducible, interactive pipelines
+- ✅ **Implementation-ready**: data download scripts and concrete Marimo notebook examples
+- ✅ **Hybrid workflow**: automated pipelines + interactive analysis notebooks
+- ✅ **Environment documentation**: `docs/research/abca4_campaign/env_notes.md` with complete uv setup
+- ✅ **All docs updated**: README, tutorials, and guides now use uv consistently
+
+**Blockers Identified:** DECIPHER requires institutional ethics approval for clinical data access.
+
+---
+
 ## Phase 0 — Define the Research Question
 
 **Goal:** lock the experimental framing before writing code.

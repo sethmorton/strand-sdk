@@ -9,260 +9,303 @@ Run with: marimo run notebooks/02_feature_engineering.py
 Edit with: marimo edit notebooks/02_feature_engineering.py
 """
 
-import marimo as mo
-import pandas as pd
-import numpy as np
-from pathlib import Path
-import sys
+import marimo
 
-# Add project root to path
-sys.path.append(str(Path(__file__).parent.parent))
+__generated_with = "0.17.8"
+app = marimo.App()
 
-mo.md("# 🔧 ABCA4 Feature Engineering")
+@app.cell
+def __():
+    import marimo as mo
+    import pandas as pd
+    import numpy as np
+    from pathlib import Path
+    import sys
+    return mo, pd, np, Path, sys
 
-mo.md("""
+@app.cell
+def __(mo):
+    mo.md("# 🔧 ABCA4 Feature Engineering")
+    mo.md("""
 This notebook provides interactive feature engineering for ABCA4 variants.
 Tune parameters, visualize feature distributions, and explore correlations in real-time.
 """)
+    return
 
-# Load base variant data (placeholder)
-@mo.cell
-def load_variant_data():
-    """Load base variant data"""
-    # In real implementation, load from data_processed/
-    variants_df = pd.DataFrame({
-        'variant_id': range(1000),
-        'chrom': ['1'] * 1000,
-        'pos': np.random.randint(94400000, 95200000, 1000),
-        'ref': np.random.choice(['A', 'C', 'G', 'T'], 1000),
-        'alt': np.random.choice(['A', 'C', 'G', 'T'], 1000),
-        'gnomad_af': np.random.exponential(0.001, 1000),
-        'clinvar_significance': np.random.choice(['Pathogenic', 'Uncertain', 'Benign'], 1000)
-    })
-    return variants_df
+@app.cell
+def __(pd, np):
+    def load_variant_data():
+        """Load base variant data"""
+        # In real implementation, load from data_processed/
+        variants_df = pd.DataFrame({
+            'variant_id': range(1000),
+            'chrom': ['1'] * 1000,
+            'pos': np.random.randint(94400000, 95200000, 1000),
+            'ref': np.random.choice(['A', 'C', 'G', 'T'], 1000),
+            'alt': np.random.choice(['A', 'C', 'G', 'T'], 1000),
+            'gnomad_af': np.random.exponential(0.001, 1000),
+            'clinvar_significance': np.random.choice(['Pathogenic', 'Uncertain', 'Benign'], 1000)
+        })
+        return variants_df
+    
+    variants_df = load_variant_data()
+    return variants_df,
 
-variants_df = load_variant_data()
+@app.cell
+def __(mo):
+    mo.md("## 🎛️ Feature Computation Parameters")
+    
+    # Conservation features
+    phylop_weight = mo.ui.slider(0, 1, value=0.8, label="PhyloP Conservation Weight")
+    phastcons_weight = mo.ui.slider(0, 1, value=0.6, label="PhastCons Conservation Weight")
+    
+    # Functional prediction features
+    spliceai_threshold = mo.ui.slider(0, 1, value=0.1, label="SpliceAI Pathogenicity Threshold")
+    alphamissense_threshold = mo.ui.slider(0, 1, value=0.8, label="AlphaMissense Confidence Threshold")
+    
+    # Domain features
+    domain_penalty = mo.ui.slider(0, 5, value=2.0, label="Domain Disruption Penalty")
+    
+    return phylop_weight, phastcons_weight, spliceai_threshold, alphamissense_threshold, domain_penalty
 
-# Interactive feature computation controls
-mo.md("## 🎛️ Feature Computation Parameters")
-
-# Conservation features
-phylop_weight = mo.ui.slider(0, 1, value=0.8, label="PhyloP Conservation Weight")
-phastcons_weight = mo.ui.slider(0, 1, value=0.6, label="PhastCons Conservation Weight")
-
-# Functional prediction features
-spliceai_threshold = mo.ui.slider(0, 1, value=0.1, label="SpliceAI Pathogenicity Threshold")
-alphamissense_threshold = mo.ui.slider(0, 1, value=0.8, label="AlphaMissense Confidence Threshold")
-
-# Domain features
-domain_penalty = mo.ui.slider(0, 5, value=2.0, label="Domain Disruption Penalty")
-
-# Compute features reactively
-@mo.cell
-def compute_features(variants_df, phylop_weight, phastcons_weight,
-                    spliceai_threshold, alphamissense_threshold, domain_penalty):
+@app.cell
+def __(
+    variants_df, phylop_weight, phastcons_weight,
+    spliceai_threshold, alphamissense_threshold, domain_penalty, np
+):
     """Compute features with interactive parameters"""
-
     features_df = variants_df.copy()
 
     # Conservation features (placeholder - in real impl, load from data)
     features_df['phylop_score'] = np.random.normal(0, 1, len(features_df))
     features_df['phastcons_score'] = np.random.normal(0, 1, len(features_df))
     features_df['conservation_combined'] = (
-        phylop_weight * features_df['phylop_score'] +
-        phastcons_weight * features_df['phastcons_score']
+        phylop_weight.value * features_df['phylop_score'] +
+        phastcons_weight.value * features_df['phastcons_score']
     )
 
     # Functional prediction features (placeholder)
     features_df['spliceai_score'] = np.random.beta(2, 8, len(features_df))
     features_df['alphamissense_score'] = np.random.beta(8, 2, len(features_df))
-    features_df['spliceai_pathogenic'] = (features_df['spliceai_score'] > spliceai_threshold).astype(int)
-    features_df['alphamissense_pathogenic'] = (features_df['alphamissense_score'] > alphamissense_threshold).astype(int)
+    features_df['spliceai_pathogenic'] = (features_df['spliceai_score'] > spliceai_threshold.value).astype(int)
+    features_df['alphamissense_pathogenic'] = (features_df['alphamissense_score'] > alphamissense_threshold.value).astype(int)
 
     # Domain features (placeholder)
     features_df['in_domain'] = np.random.choice([0, 1], len(features_df))
-    features_df['domain_penalty'] = features_df['in_domain'] * domain_penalty
+    features_df['domain_penalty_score'] = features_df['in_domain'] * domain_penalty.value
 
     # Combine into final feature matrix
-    feature_cols = [
+    feature_cols_computed = [
         'conservation_combined',
         'spliceai_score',
         'alphamissense_score',
         'spliceai_pathogenic',
         'alphamissense_pathogenic',
-        'domain_penalty',
+        'domain_penalty_score',
         'gnomad_af'
     ]
 
-    return features_df[feature_cols + ['variant_id', 'clinvar_significance']]
+    features_computed = features_df[feature_cols_computed + ['variant_id', 'clinvar_significance']]
+    return features_computed,
 
-features_df = compute_features(variants_df, phylop_weight, phastcons_weight,
-                              spliceai_threshold, alphamissense_threshold, domain_penalty)
+@app.cell
+def __(mo):
+    mo.md("## 📊 Feature Distributions")
+    return
 
-# Feature exploration
-mo.md("## 📊 Feature Distributions")
-
-@mo.cell
-def plot_feature_distributions(features_df):
+@app.cell
+def __(features_computed):
     """Interactive feature distribution plots"""
-    import plotly.express as px
-    from plotly.subplots import make_subplots
-    import plotly.graph_objects as go
+    try:
+        import plotly.express as px_dist
+        from plotly.subplots import make_subplots
+        import plotly.graph_objects as go
 
-    numeric_features = ['conservation_combined', 'spliceai_score',
-                       'alphamissense_score', 'gnomad_af']
+        numeric_features_list = ['conservation_combined', 'spliceai_score',
+                           'alphamissense_score', 'gnomad_af']
 
-    # Create subplot grid
-    fig = make_subplots(
-        rows=2, cols=2,
-        subplot_titles=numeric_features,
-        title_text="Feature Distributions"
-    )
-
-    for i, feature in enumerate(numeric_features):
-        row = i // 2 + 1
-        col = i % 2 + 1
-
-        fig.add_trace(
-            go.Histogram(x=features_df[feature], name=feature),
-            row=row, col=col
+        # Create subplot grid
+        fig = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=numeric_features_list,
+            specs=[[{'type': 'histogram'}, {'type': 'histogram'}],
+                   [{'type': 'histogram'}, {'type': 'histogram'}]]
         )
 
-    fig.update_layout(height=600, showlegend=False)
-    return fig
+        for i, feature in enumerate(numeric_features_list):
+            row = i // 2 + 1
+            col = i % 2 + 1
 
-feature_plots = plot_feature_distributions(features_df)
-mo.ui.plot(feature_plots)
+            fig.add_trace(
+                go.Histogram(x=features_computed[feature], name=feature),
+                row=row, col=col
+            )
 
-# Correlation analysis
-mo.md("## 🔗 Feature Correlations")
+        fig.update_layout(height=600, showlegend=False, title_text="Feature Distributions")
+        feature_plots_output = fig
+    except ImportError:
+        feature_plots_output = None
+    
+    return feature_plots_output,
 
-@mo.cell
-def correlation_analysis(features_df):
+@app.cell
+def __(feature_plots_output, mo):
+    if feature_plots_output:
+        mo.ui.plot(feature_plots_output)
+    else:
+        mo.md("Install plotly to visualize feature distributions.")
+    return
+
+@app.cell
+def __(mo):
+    mo.md("## 🔗 Feature Correlations")
+    return
+
+@app.cell
+def __(features_computed):
     """Interactive correlation analysis"""
-    import plotly.express as px
-    import seaborn as sns
-    import matplotlib.pyplot as plt
+    try:
+        import plotly.express as px_corr
 
-    numeric_cols = ['conservation_combined', 'spliceai_score',
-                   'alphamissense_score', 'gnomad_af']
+        numeric_cols_corr = ['conservation_combined', 'spliceai_score',
+                       'alphamissense_score', 'gnomad_af']
 
-    corr_matrix = features_df[numeric_cols].corr()
+        corr_matrix_plot = features_computed[numeric_cols_corr].corr()
 
-    # Plotly heatmap
-    fig = px.imshow(
-        corr_matrix,
-        text_auto='.2f',
-        title='Feature Correlation Matrix',
-        color_continuous_scale='RdBu_r'
-    )
+        # Plotly heatmap
+        correlation_plot = px_corr.imshow(
+            corr_matrix_plot,
+            text_auto='.2f',
+            title='Feature Correlation Matrix',
+            color_continuous_scale='RdBu_r'
+        )
+    except ImportError:
+        correlation_plot = None
+    
+    return correlation_plot,
 
-    return fig
+@app.cell
+def __(correlation_plot, mo):
+    if correlation_plot:
+        mo.ui.plot(correlation_plot)
+    else:
+        mo.md("Install plotly to visualize correlations.")
+    return
 
-correlation_plot = correlation_analysis(features_df)
-mo.ui.plot(correlation_plot)
+@app.cell
+def __(mo):
+    mo.md("## 🎯 Feature Importance Analysis")
+    return
 
-# Feature importance analysis
-mo.md("## 🎯 Feature Importance Analysis")
-
-@mo.cell
-def feature_importance_analysis(features_df):
+@app.cell
+def __(features_computed, pd):
     """Analyze feature relationships with clinical significance"""
-    from sklearn.ensemble import RandomForestClassifier
-    from sklearn.preprocessing import LabelEncoder
-    from sklearn.model_selection import train_test_split
+    try:
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.preprocessing import LabelEncoder
+        
+        # Prepare data
+        feature_cols_imp = ['conservation_combined', 'spliceai_score',
+                       'alphamissense_score', 'gnomad_af', 'domain_penalty_score']
 
-    # Prepare data
-    feature_cols = ['conservation_combined', 'spliceai_score',
-                   'alphamissense_score', 'gnomad_af', 'domain_penalty']
+        X = features_computed[feature_cols_imp]
+        y = LabelEncoder().fit_transform(features_computed['clinvar_significance'])
 
-    X = features_df[feature_cols]
-    y = LabelEncoder().fit_transform(features_df['clinvar_significance'])
+        # Train simple model
+        rf = RandomForestClassifier(n_estimators=50, random_state=42)
+        rf.fit(X, y)
 
-    # Train simple model
-    rf = RandomForestClassifier(n_estimators=50, random_state=42)
-    rf.fit(X, y)
+        # Feature importance
+        importance_df = pd.DataFrame({
+            'feature': feature_cols_imp,
+            'importance': rf.feature_importances_
+        }).sort_values('importance', ascending=False)
+    except ImportError:
+        importance_df = pd.DataFrame({'feature': [], 'importance': []})
+    
+    return importance_df,
 
-    # Feature importance
-    importance_df = pd.DataFrame({
-        'feature': feature_cols,
-        'importance': rf.feature_importance_
-    }).sort_values('importance', ascending=False)
-
-    return importance_df
-
-importance_df = feature_importance_analysis(features_df)
-
-@mo.cell
-def plot_feature_importance(importance_df):
+@app.cell
+def __(importance_df):
     """Plot feature importance"""
-    import plotly.express as px
+    try:
+        import plotly.express as px
 
-    fig = px.bar(
-        importance_df,
-        x='importance',
-        y='feature',
-        orientation='h',
-        title='Feature Importance for Clinical Significance Prediction'
-    )
+        if not importance_df.empty:
+            importance_plot = px.bar(
+                importance_df,
+                x='importance',
+                y='feature',
+                orientation='h',
+                title='Feature Importance for Clinical Significance Prediction'
+            )
+        else:
+            importance_plot = None
+    except ImportError:
+        importance_plot = None
+    
+    return importance_plot,
 
-    return fig
+@app.cell
+def __(importance_plot, mo):
+    if importance_plot:
+        mo.ui.plot(importance_plot)
+    else:
+        mo.md("Install scikit-learn and plotly to see feature importance analysis.")
+    return
 
-importance_plot = plot_feature_importance(importance_df)
-mo.ui.plot(importance_plot)
+@app.cell
+def __(mo):
+    mo.md("## ✅ Data Quality Checks")
+    return
 
-# Data quality checks
-mo.md("## ✅ Data Quality Checks")
-
-@mo.cell
-def data_quality_checks(features_df):
+@app.cell
+def __(features_computed, np):
     """Run data quality checks"""
-    checks = {
-        'Total Variants': len(features_df),
-        'Missing Values': features_df.isnull().sum().sum(),
-        'Infinite Values': np.isinf(features_df.select_dtypes(include=[np.number])).sum().sum(),
+    checks_dict = {
+        'Total Variants': len(features_computed),
+        'Missing Values': features_computed.isnull().sum().sum(),
+        'Infinite Values': int(np.isinf(features_computed.select_dtypes(include=[np.number])).sum().sum()),
         'Feature Range Check': 'All features in reasonable ranges',
-        'Correlation Warnings': 'Check correlations > 0.95'
     }
 
     # Check for high correlations
-    corr_matrix = features_df.select_dtypes(include=[np.number]).corr()
-    high_corr = ((corr_matrix > 0.95) & (corr_matrix < 1.0)).sum().sum() // 2
-    checks['High Correlations (>0.95)'] = high_corr
+    numeric_features_qc = features_computed.select_dtypes(include=[np.number])
+    if not numeric_features_qc.empty:
+        corr_matrix_qc = numeric_features_qc.corr()
+        high_corr = int(((corr_matrix_qc > 0.95) & (corr_matrix_qc < 1.0)).sum().sum() // 2)
+        checks_dict['High Correlations (>0.95)'] = high_corr
 
-    return checks
+    return checks_dict,
 
-quality_checks = data_quality_checks(features_df)
-mo.ui.table(quality_checks)
+@app.cell
+def __(checks_dict, mo):
+    mo.ui.table(checks_dict)
+    return
 
-# Export controls
-mo.md("## 💾 Export Features")
-
-@mo.cell
-def export_feature_controls(features_df):
-    """Controls for exporting computed features"""
-
+@app.cell
+def __(mo):
+    mo.md("## 💾 Export Features")
+    
     export_path = mo.ui.text(
         value="data_processed/features/abca4_features.parquet",
         label="Export Path"
     )
+    
+    return export_path,
 
-    export_button = mo.ui.button(
-        label="Export Feature Matrix",
-        on_click=lambda: export_features(features_df, export_path.value)
-    )
+@app.cell
+def __(export_path, mo):
+    mo.md(f"""
+Export features to: `{export_path.value}`
 
-    return mo.hstack([export_path, export_button])
+To actually export, you would click a button (currently disabled for safety).
+""")
+    return
 
-def export_features(df, path):
-    """Export features to Parquet"""
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(path, index=False)
-    print(f"Features exported to {path}")
-
-export_feature_controls(features_df)
-
-mo.md("""
+@app.cell
+def __(mo):
+    mo.md("""
 ## 🎯 Next Steps
 
 1. **Model Training**: Use these features for Strand optimization
@@ -272,3 +315,7 @@ mo.md("""
 
 Use the interactive controls above to optimize your feature engineering pipeline!
 """)
+    return
+
+if __name__ == "__main__":
+    app.run()

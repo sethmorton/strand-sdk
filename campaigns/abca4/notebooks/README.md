@@ -14,7 +14,7 @@ uv run marimo edit notebooks/01_data_exploration.py
 # Run as interactive web app
 uv run marimo run notebooks/01_data_exploration.py
 
-# Execute as regular Python script
+# Execute as regular Python scriptFEATURE_MATRIX
 uv run python notebooks/01_data_exploration.py
 ```
 
@@ -123,9 +123,9 @@ marimo edit new_notebook.py
 
 ## 🎯 Next Steps
 
-1. Install Marimo: `uv pip install -e .[interactive]`
-2. Explore the data: `uv run marimo edit notebooks/01_data_exploration.py`
-3. Start feature engineering: `uv run marimo edit notebooks/02_feature_engineering.py`
-4. Tune optimization: `uv run marimo edit notebooks/03_optimization_dashboard.py`
+1. Install Marimo: `uv sync` (marimo is now in main dependencies)
+2. Explore the data: `uv run marimo edit campaigns/abca4/notebooks/01_data_exploration.py`
+3. Start feature engineering: `uv run marimo edit campaigns/abca4/notebooks/02_feature_engineering.py`
+4. Tune optimization: `uv run marimo edit campaigns/abca4/notebooks/03_optimization_dashboard.py`
 
 These notebooks provide the interactive foundation for reproducible, collaborative genomics research! 🔬✨

@@ -22,3 +22,9 @@ invoke generate-report           # write data_processed/reports/* snapshot files
 
 All scripts assume paths relative to this folder, so nothing leaks into the
 framework modules under `strand/` or `src/`.
+
+
+get an example fasta sequence related to abca4  
+```bash
+https://rest.uniprot.org/uniprotkb/P78363.fasta
+```

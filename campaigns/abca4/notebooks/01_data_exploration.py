@@ -1,26 +1,39 @@
 #!/usr/bin/env python3
 """ABCA4 Campaign – interactive data exploration with Marimo."""
 
-import marimo as mo
-import numpy as np
-import pandas as pd
-from pathlib import Path
+import marimo
 
-CAMPAIGN_ROOT = Path(__file__).resolve().parents[2]
-FEATURE_MATRIX = CAMPAIGN_ROOT / "data_processed" / "features" / "abca4_feature_matrix.parquet"
+__generated_with = "0.17.8"
+app = marimo.App()
 
-mo.md("# 🔬 ABCA4 Variant Explorer - Marimo Notebook")
-mo.md(
+@app.cell
+def __():
+    import marimo as mo
+    import numpy as np
+    import pandas as pd
+    from pathlib import Path
+    return mo, np, pd, Path
+
+@app.cell
+def __(Path):
+    CAMPAIGN_ROOT = Path(__file__).resolve().parents[2]
+    FEATURE_MATRIX = CAMPAIGN_ROOT / "data_processed" / "features" / "abca4_feature_matrix.parquet"
+    return CAMPAIGN_ROOT, FEATURE_MATRIX
+
+@app.cell
+def __(mo):
+    mo.md("# 🔬 ABCA4 Variant Explorer - Marimo Notebook")
+    mo.md(
+        """
+    Use the controls below to slice the unified ABCA4 feature matrix. Every widget is
+    reactive: once the data is filtered, tables, charts, and download buttons update
+    automatically.
     """
-Use the controls below to slice the unified ABCA4 feature matrix. Every widget is
-reactive: once the data is filtered, tables, charts, and download buttons update
-automatically.
-"""
-)
+    )
+    return
 
-
-@mo.cell
-def feature_matrix():
+@app.cell
+def feature_matrix(FEATURE_MATRIX, np, pd):
     if not FEATURE_MATRIX.exists():
         print(f"⚠️ Missing feature matrix at {FEATURE_MATRIX}. Run `invoke features.compute`. ")
         return pd.DataFrame()
@@ -29,18 +42,21 @@ def feature_matrix():
     df = df.replace({np.inf: np.nan, -np.inf: np.nan})
     return df
 
+@app.cell
+def __(feature_matrix):
+    df_features = feature_matrix()
+    return df_features,
 
-df_features = feature_matrix()
+@app.cell
+def __(pd):
+    def _safe_unique(series: pd.Series) -> list[str]:
+        if series.empty:
+            return []
+        return sorted(series.dropna().astype(str).unique())
+    return _safe_unique,
 
-
-def _safe_unique(series: pd.Series) -> list[str]:
-    if series.empty:
-        return []
-    return sorted(series.dropna().astype(str).unique())
-
-
-@mo.cell
-def filter_controls(df_features: pd.DataFrame):
+@app.cell
+def filter_controls(df_features, _safe_unique, mo, pd):
     if df_features.empty:
         placeholder = mo.card("Filters", mo.md("Upload data to unlock controls."))
         return placeholder, None, None, None, None, None, None, None
@@ -84,22 +100,32 @@ def filter_controls(df_features: pd.DataFrame):
 
     return panel, clinical, coding, regulatory, domain_only, af_slider, splice_slider, missense_slider
 
+@app.cell
+def __(filter_controls, df_features):
+    (
+        filter_panel,
+        clinical_significance,
+        coding_impacts,
+        regulatory_types,
+        domain_only,
+        allele_frequency_max,
+        splice_threshold,
+        missense_threshold,
+    ) = filter_controls(df_features)
+    filter_panel
+    return (
+        allele_frequency_max,
+        clinical_significance,
+        coding_impacts,
+        domain_only,
+        filter_panel,
+        missense_threshold,
+        regulatory_types,
+        splice_threshold,
+    )
 
-(
-    filter_panel,
-    clinical_significance,
-    coding_impacts,
-    regulatory_types,
-    domain_only,
-    allele_frequency_max,
-    splice_threshold,
-    missense_threshold,
-) = filter_controls(df_features)
-filter_panel
-
-
-@mo.cell
-def weight_controls():
+@app.cell
+def weight_controls(mo):
     reg = mo.ui.slider(0.0, 1.0, value=0.35, step=0.05, label="Regulatory weight")
     splice = mo.ui.slider(0.0, 1.0, value=0.25, step=0.05, label="Splice weight")
     missense = mo.ui.slider(0.0, 1.0, value=0.25, step=0.05, label="Missense weight")
@@ -115,17 +141,20 @@ def weight_controls():
 
     return panel, reg, splice, missense, conservation
 
+@app.cell
+def __(weight_controls):
+    weights_panel, reg_weight, splice_weight, missense_weight, conservation_weight = weight_controls()
+    weights_panel
+    return conservation_weight, missense_weight, reg_weight, splice_weight, weights_panel
 
-weights_panel, reg_weight, splice_weight, missense_weight, conservation_weight = weight_controls()
-weights_panel
+@app.cell
+def __(mo):
+    top_k_slider = mo.ui.slider(5, 200, value=50, step=5, label="Top-K for downloads")
+    top_k_slider
+    return top_k_slider,
 
-
-top_k_slider = mo.ui.slider(5, 200, value=50, step=5, label="Top-K for downloads")
-top_k_slider
-
-
-@mo.cell
-def normalized_weights(reg_weight, splice_weight, missense_weight, conservation_weight):
+@app.cell
+def normalized_weights(conservation_weight, missense_weight, np, reg_weight, splice_weight):
     sliders = [reg_weight, splice_weight, missense_weight, conservation_weight]
     values = np.array([slider.value if slider else 0.25 for slider in sliders], dtype=float)
     if values.sum() == 0:
@@ -139,21 +168,22 @@ def normalized_weights(reg_weight, splice_weight, missense_weight, conservation_
     ]
     return dict(labels)
 
+@app.cell
+def __(conservation_weight, missense_weight, normalized_weights, reg_weight, splice_weight):
+    score_weights = normalized_weights(reg_weight, splice_weight, missense_weight, conservation_weight)
+    return score_weights,
 
-score_weights = normalized_weights(reg_weight, splice_weight, missense_weight, conservation_weight)
-
-
-@mo.cell
+@app.cell
 def filtered_variants(
-    df_features,
+    allele_frequency_max,
     clinical_significance,
     coding_impacts,
-    regulatory_types,
+    df_features,
     domain_only,
-    allele_frequency_max,
-    splice_threshold,
     missense_threshold,
+    regulatory_types,
     score_weights,
+    splice_threshold,
 ):
     df = df_features.copy()
     if df.empty:
@@ -193,22 +223,34 @@ def filtered_variants(
     df = df.sort_values("composite_score", ascending=False)
     return df.reset_index(drop=True)
 
-
-current_variants = filtered_variants(
-    df_features,
+@app.cell
+def __(
+    allele_frequency_max,
     clinical_significance,
     coding_impacts,
-    regulatory_types,
+    df_features,
     domain_only,
-    allele_frequency_max,
-    splice_threshold,
+    filtered_variants,
     missense_threshold,
+    regulatory_types,
     score_weights,
-)
+    splice_threshold,
+):
+    current_variants = filtered_variants(
+        df_features,
+        clinical_significance,
+        coding_impacts,
+        regulatory_types,
+        domain_only,
+        allele_frequency_max,
+        splice_threshold,
+        missense_threshold,
+        score_weights,
+    )
+    return current_variants,
 
-
-@mo.cell
-def summary_cards(df_features, current_variants):
+@app.cell
+def summary_cards(current_variants, df_features, mo, np, pd):
     if df_features.empty:
         return mo.card("Summary", mo.md("No data loaded."))
 
@@ -226,12 +268,13 @@ def summary_cards(df_features, current_variants):
 
     return mo.card("Snapshot", content)
 
+@app.cell
+def __(current_variants, df_features, summary_cards):
+    summary_cards(df_features, current_variants)
+    return
 
-summary_cards(df_features, current_variants)
-
-
-@mo.cell
-def variant_table(current_variants, top_k_slider):
+@app.cell
+def variant_table(current_variants, mo, top_k_slider):
     if current_variants.empty:
         return mo.md("No variants met the criteria.")
 
@@ -250,12 +293,13 @@ def variant_table(current_variants, top_k_slider):
     preview = current_variants[available].head(top_k_slider.value)
     return mo.ui.dataframe(preview)
 
+@app.cell
+def __(current_variants, top_k_slider, variant_table):
+    variant_table(current_variants, top_k_slider)
+    return
 
-variant_table(current_variants, top_k_slider)
-
-
-@mo.cell
-def distribution_charts(current_variants):
+@app.cell
+def distribution_charts(current_variants, mo):
     if current_variants.empty:
         return mo.md("Nothing to visualize yet – adjust your filters.")
 
@@ -289,11 +333,12 @@ def distribution_charts(current_variants):
 
     return mo.ui.tabs(plots) if plots else mo.md("Add gnomAD/regulatory columns to plot.")
 
+@app.cell
+def __(current_variants, distribution_charts):
+    distribution_charts(current_variants)
+    return
 
-distribution_charts(current_variants)
-
-
-@mo.cell
+@app.cell
 def domain_breakdown(current_variants):
     if current_variants.empty or "domain_label" not in current_variants:
         return mo.md("Domain annotations unavailable.")

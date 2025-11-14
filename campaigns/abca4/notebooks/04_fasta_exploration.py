@@ -7,8 +7,6 @@ __generated_with = "0.17.8"
 app = marimo.App()
 
 
-
-
 @app.cell
 def _():
     import re
@@ -63,6 +61,17 @@ def _():
                 "start": start,
                 "end": end,
             })
+        FASTA_PATH = "strand-sdk/campaigns/abca4/data_raw/sequences/ABCA4_P78363.fasta"   # <-- put your FASTA file path here
+        seq = read_fasta_sequence(FASTA_PATH)
+        motifs = find_motifs(seq)
+
+        print("ATP-binding-like motifs (GxxxxGK[ST]):")
+        for site in motifs["atp_sites"]:
+            print(f"  {site['motif']}  at {site['start']}-{site['end']}")
+
+        print("\nN-glycosylation motifs (N[^P][ST][^P]):")
+        for site in motifs["nglyc_sites"]:
+            print(f"  {site['motif']}  at {site['start']}-{site['end']}")
 
         return {"atp_sites": atp_sites, "nglyc_sites": nglyc_sites}
 
@@ -73,8 +82,11 @@ def _():
     from Bio import SeqIO
     from pathlib import Path
 
+    FASTA_PATH = "strand-sdk/campaigns/abca4/data_raw/sequences/ABCA4_P78363.fasta"
+
+
     # Point this to your FASTA file
-    fasta_path = Path("/Users/sanjukta/strand-sdk/campaigns/abca4/data_raw/sequences/ABCA4_P78363.fasta")
+    fasta_path = Path(FASTA_PATH)
 
     try:
         records = list(SeqIO.parse(fasta_path, "fasta"))
@@ -102,24 +114,8 @@ def _():
                     else:
                         print(line)
 
-    # ⬇️ last expression is the cell output
+    print(view)
     return view
-
-    if __name__ == "__main__":
-        fasta_path = "/Users/sanjukta/strand-sdk/campaigns/abca4/data_raw/sequences/ABCA4_P78363.fasta"   # <-- put your FASTA file path here
-        seq = read_fasta_sequence(fasta_path)
-        motifs = find_motifs(seq)
-
-        print("ATP-binding-like motifs (GxxxxGK[ST]):")
-        for site in motifs["atp_sites"]:
-            print(f"  {site['motif']}  at {site['start']}-{site['end']}")
-
-        print("\nN-glycosylation motifs (N[^P][ST][^P]):")
-        for site in motifs["nglyc_sites"]:
-            print(f"  {site['motif']}  at {site['start']}-{site['end']}")
-
-    return
-
 
 if __name__ == "__main__":
     app.run()

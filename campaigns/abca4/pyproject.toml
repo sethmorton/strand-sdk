@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "abca4-campaign"
+version = "0.1.0"
+description = "ABCA4 variant triage campaign for Strand SDK"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+dependencies = [
+    "numpy>=1.26,<2.0",
+    "pandas>=2.1",
+    "scipy>=1.12",
+    "requests>=2.31.0",
+    "pyyaml>=6.0",
+    "biopython>=1.81",
+    "pysam>=0.23.3",
+    "marimo>=0.17.8",
+    "gffutils>=0.11.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[tool.setuptools]
+packages = [
+    "src",
+    "src.data",
+    "src.annotation",
+    "src.features",
+    "src.reporting",
+    "src.reward",
+]
+package-dir = {"" = "."}
+
+[tool.setuptools.package-data]
+src = ["data/domains/*.json"]
+
+[tool.black]
+line-length = 100
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

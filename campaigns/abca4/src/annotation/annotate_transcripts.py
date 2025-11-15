@@ -11,7 +11,8 @@ import logging
 import sys
 from typing import Optional, Dict, Any, List
 import requests
-from pyensembl import EnsemblRelease
+#from pyensembl import EnsemblRelease
+import gffutils
 
 # Setup logging
 logging.basicConfig(
@@ -28,15 +29,48 @@ ENSEMBL_RELEASE = 109  # GRCh38
 class VariantAnnotator:
     """Add transcript and functional annotations to variants."""
 
+    #def __init__(self, input_dir: Optional[Path] = None, output_dir: Optional[Path] = None,
+        #         ensembl_release: int = ENSEMBL_RELEASE):
+        #data_root = CAMPAIGN_ROOT / "data_processed"
+        #self.input_dir = input_dir or (data_root / "variants")
+        #self.output_dir = output_dir or (data_root / "annotations")
+        #self.output_dir.mkdir(parents=True, exist_ok=True)
+        #self.ensembl = EnsemblRelease(ensembl_release)
+        #self._ensure_ensembl_ready()
+        #self.transcript = self.ensembl.transcript_by_id(CANONICAL_TRANSCRIPT)
+
+
     def __init__(self, input_dir: Optional[Path] = None, output_dir: Optional[Path] = None,
-                 ensembl_release: int = ENSEMBL_RELEASE):
+                 gtf_file: Optional[Path] = None):
         data_root = CAMPAIGN_ROOT / "data_processed"
         self.input_dir = input_dir or (data_root / "variants")
         self.output_dir = output_dir or (data_root / "annotations")
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.ensembl = EnsemblRelease(ensembl_release)
-        self._ensure_ensembl_ready()
-        self.transcript = self.ensembl.transcript_by_id(CANONICAL_TRANSCRIPT)
+        
+        # Download GTF from Ensembl if needed
+        gtf_path = gtf_file or self._get_gtf_file()
+        db_path = gtf_path.with_suffix('.db')
+        
+        # Create or load database
+        if not db_path.exists():
+            self.db = gffutils.create_db(str(gtf_path), str(db_path), 
+                                        force=False, keep_order=True)
+        else:
+            self.db = gffutils.FeatureDB(str(db_path))
+        
+        self.transcript = self.db[CANONICAL_TRANSCRIPT]
+    
+    def _get_gtf_file(self) -> Path:
+        """Download Ensembl GTF file if not present."""
+        gtf_dir = CAMPAIGN_ROOT / "data_processed" / "reference"
+        gtf_dir.mkdir(parents=True, exist_ok=True)
+        gtf_file = gtf_dir / "Homo_sapiens.GRCh38.109.gtf.gz"
+        
+        if not gtf_file.exists():
+            url = f"https://ftp.ensembl.org/pub/release-109/gtf/homo_sapiens/Homo_sapiens.GRCh38.109.gtf.gz"
+            # Download logic here
+        
+        return gtf_file
 
     def fetch_vep_annotations(self, variants_df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
         """Query Ensembl VEP REST API for HGVS + consequence annotations."""

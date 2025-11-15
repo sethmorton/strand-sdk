@@ -23,7 +23,7 @@ app = marimo.App()
 
 
 @app.cell
-def __():
+def _():
     """Import core libraries."""
     import marimo as mo
     import pandas as pd
@@ -39,12 +39,11 @@ def __():
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
     logger = logging.getLogger(__name__)
-
-    return mo, pd, np, Path, logging, logger, Optional, List, Dict, Tuple, json, sys
+    return Path, logger, mo, pd, sys
 
 
 @app.cell
-def __(mo, Path):
+def _(mo):
     """
     ## Step 0: Scope & Framing
 
@@ -72,31 +71,26 @@ def __(mo, Path):
 
 
 @app.cell
-def __(mo, Path):
+def _(Path):
     """Define campaign root paths."""
     CAMPAIGN_ROOT = Path(__file__).resolve().parents[0]
+    FULL_CAMPAIGN_ROOT = Path(__file__).resolve().parents[1]
     DATA_RAW_DIR = CAMPAIGN_ROOT / "data_raw"
     DATA_PROCESSED_DIR = CAMPAIGN_ROOT / "data_processed"
     VARIANTS_DIR = DATA_PROCESSED_DIR / "variants"
     ANNOTATIONS_DIR = DATA_PROCESSED_DIR / "annotations"
     FEATURES_DIR = DATA_PROCESSED_DIR / "features"
 
+    print(CAMPAIGN_ROOT)
+    print(FULL_CAMPAIGN_ROOT)
     # Ensure directories exist
     for d in [DATA_RAW_DIR, VARIANTS_DIR, ANNOTATIONS_DIR, FEATURES_DIR]:
         d.mkdir(parents=True, exist_ok=True)
-    
-    return (
-        CAMPAIGN_ROOT,
-        DATA_RAW_DIR,
-        DATA_PROCESSED_DIR,
-        VARIANTS_DIR,
-        ANNOTATIONS_DIR,
-        FEATURES_DIR,
-    )
+    return ANNOTATIONS_DIR, DATA_RAW_DIR, FULL_CAMPAIGN_ROOT, VARIANTS_DIR
 
 
 @app.cell
-def __(mo):
+def _(mo):
     """
     ## Step 0: Configuration Parameters
 
@@ -114,28 +108,27 @@ def __(mo):
         value="High-throughput MPRAssay validation with focus on Stargardt disease pathogenicity",
         label="Budget/Narrative",
     )
-
-    return gene_symbol, transcript_id, k_variants, budget_narrative
+    return budget_narrative, gene_symbol, k_variants, transcript_id
 
 
 @app.cell
-def __(mo, gene_symbol, transcript_id, k_variants, budget_narrative):
+def _(budget_narrative, gene_symbol, k_variants, mo, transcript_id):
     """Display current configuration."""
     config_display = mo.md(f"""
-### Current Configuration
+    ### Current Configuration
 
-- **Gene:** {gene_symbol.value}
-- **Transcript:** {transcript_id.value}
-- **Panel Size (K):** {k_variants.value}
-- **Narrative:** {budget_narrative.value[:80]}...
+    - **Gene:** {gene_symbol.value}
+    - **Transcript:** {transcript_id.value}
+    - **Panel Size (K):** {k_variants.value}
+    - **Narrative:** {budget_narrative.value[:80]}...
 
-All downstream cells use these parameters automatically.
-""")
-    return config_display
+    All downstream cells use these parameters automatically.
+    """)
+    return
 
 
 @app.cell
-def __(mo):
+def _(mo):
     """
     ## Step 1: Data Ingest
 
@@ -149,30 +142,35 @@ def __(mo):
     Upload an optional TSV file with additional variants, or use the downloaded data as-is.
     """
     mo.md(__doc__)
+    return
 
 
 @app.cell
-def __(mo):
+def _(mo):
     """Optional TSV Upload."""
     uploaded_file = mo.ui.file_browser(filetypes=[".tsv", ".csv", ".txt"], label="Upload Partner Data (Optional)")
-    return uploaded_file
+    return (uploaded_file,)
 
 
 @app.cell
-def __(
-    pd, np, logger,
-    DATA_RAW_DIR, VARIANTS_DIR,
-    uploaded_file, CAMPAIGN_ROOT
+def _(
+    DATA_RAW_DIR,
+    FULL_CAMPAIGN_ROOT,
+    VARIANTS_DIR,
+    logger,
+    pd,
+    sys,
+    uploaded_file,
 ):
     """
     Load ABCA4 variants using the authoritative filter_abca4_variants.py pipeline.
-    
+
     This cell invokes the real data processing pipeline rather than truncating TSV
     or creating synthetic rows.
     """
-    sys.path.insert(0, str(CAMPAIGN_ROOT))
+    sys.path.insert(0, str(FULL_CAMPAIGN_ROOT))
     from src.data.filter_abca4_variants import ABCA4VariantFilter
-    
+
     variants_source = "unknown"
 
     try:
@@ -228,23 +226,23 @@ def __(
 
     logger.info(f"Total unique variants: {len(df_variants_raw)}")
     df_variants_raw.attrs['source'] = variants_source or "unknown"
-    
-    return df_variants_raw
+    return (df_variants_raw,)
 
 
 @app.cell
-def __(mo, df_variants_raw):
+def _(df_variants_raw, mo):
     """Report how variants were loaded (cache vs pipeline)."""
     variant_source = df_variants_raw.attrs.get('source', 'unknown')
     mo.md(f"""
-**Variant source:** `{variant_source}`
+    **Variant source:** `{variant_source}`
 
-Cached parquet loads are instant. If the notebook re-ran the ClinVar pipeline you'll see `pipeline` here.
-""")
+    Cached parquet loads are instant. If the notebook re-ran the ClinVar pipeline you'll see `pipeline` here.
+    """)
+    return
 
 
 @app.cell
-def __(mo, df_variants_raw):
+def _(df_variants_raw, mo):
     """Display raw variant counts by clinical significance."""
     if df_variants_raw.empty:
         mo.md("⚠️ No variants loaded.")
@@ -252,29 +250,30 @@ def __(mo, df_variants_raw):
         # Find clinical significance column
         _clinsig_cols = [c for c in df_variants_raw.columns if "clin" in c.lower() or "significance" in c.lower()]
         _clinsig_col = _clinsig_cols[0] if _clinsig_cols else "clinical_significance"
-        
+
         if _clinsig_col in df_variants_raw.columns:
             _clinsig_summary = df_variants_raw[_clinsig_col].value_counts().to_frame("count")
             mo.md(f"""
-### Raw Variant Summary
+    ### Raw Variant Summary
 
-**Total variants:** {len(df_variants_raw)}
+    **Total variants:** {len(df_variants_raw)}
 
-**Distribution by Clinical Significance:**
-""")
+    **Distribution by Clinical Significance:**
+    """)
             mo.ui.table(_clinsig_summary.reset_index())
         else:
             mo.md(f"**Total variants:** {len(df_variants_raw)}")
+    return
 
 
 @app.cell
-def __(mo, df_variants_raw):
+def _(df_variants_raw, mo):
     """Interactive Filtering panel."""
     mo.md("""
-### Interactive Filtering
+    ### Interactive Filtering
 
-Use controls below to filter variants.
-""")
+    Use controls below to filter variants.
+    """)
 
     filter_clinsig = None
     filter_af = None
@@ -283,7 +282,7 @@ Use controls below to filter variants.
         # Find clinical significance column
         _clinsig_cols = [c for c in df_variants_raw.columns if "clin" in c.lower() or "significance" in c.lower()]
         _clinsig_col = _clinsig_cols[0] if _clinsig_cols else None
-        
+
         if _clinsig_col:
             _clinsig_options = df_variants_raw[_clinsig_col].dropna().unique().tolist()
             filter_clinsig = mo.ui.multiselect(
@@ -294,15 +293,11 @@ Use controls below to filter variants.
 
         # Optional: allele frequency filter
         filter_af = mo.ui.slider(0.0, 0.01, value=0.01, step=0.0001, label="Max gnomAD AF (if available)")
-
-    return filter_clinsig, filter_af
+    return filter_af, filter_clinsig
 
 
 @app.cell
-def __(
-    pd, np, df_variants_raw,
-    filter_clinsig, filter_af
-):
+def _(df_variants_raw, filter_af, filter_clinsig):
     """Apply filters to get working variant set."""
     df_variants_filtered = df_variants_raw.copy()
 
@@ -316,44 +311,50 @@ def __(
     # Filter by AF if gnomad_af column exists
     if filter_af is not None and "gnomad_af" in df_variants_filtered.columns and hasattr(filter_af, 'value'):
         df_variants_filtered = df_variants_filtered[df_variants_filtered["gnomad_af"] <= filter_af.value]
-
-    return df_variants_filtered
+    return (df_variants_filtered,)
 
 
 @app.cell
-def __(mo, df_variants_filtered):
+def _(df_variants_filtered, mo):
     """Display filtered variant count."""
     mo.md(f"""
-### Filtered Variants: {len(df_variants_filtered)} variants
+    ### Filtered Variants: {len(df_variants_filtered)} variants
 
-Ready for annotation and feature engineering.
-""")
+    Ready for annotation and feature engineering.
+    """)
+    return
 
 
 @app.cell
-def __(mo):
+def _(mo):
     """
     ## Step 2: Annotation & Deterministic Features
 
     Add VEP annotations, gnomAD joins, conservation scores, and domain mappings.
     """
     mo.md(__doc__)
+    return
 
 
 @app.cell
-def __(
-    pd, np, logger,
-    df_variants_filtered, CAMPAIGN_ROOT, VARIANTS_DIR, ANNOTATIONS_DIR
+def _(
+    ANNOTATIONS_DIR,
+    FULL_CAMPAIGN_ROOT,
+    VARIANTS_DIR,
+    df_variants_filtered,
+    logger,
+    pd,
+    sys,
 ):
     """
     Add transcript annotations using the authoritative annotate_transcripts.py pipeline.
-    
+
     This cell invokes VEP and pyensembl APIs for real transcript/consequence annotations
     rather than using placeholder values.
     """
-    sys.path.insert(0, str(CAMPAIGN_ROOT))
+    sys.path.insert(0, str(FULL_CAMPAIGN_ROOT))
     from src.annotation.annotate_transcripts import VariantAnnotator
-    
+
     annotation_source = "unknown"
 
     try:
@@ -367,11 +368,11 @@ def __(
         else:
             # Run the authoritative annotation pipeline
             logger.info("Running authoritative variant annotation pipeline...")
-            
+
             # First, save filtered variants to the expected location
             temp_path = VARIANTS_DIR / "abca4_clinvar_vus.parquet"
             df_variants_filtered.to_parquet(temp_path)
-            
+
             annotator = VariantAnnotator(input_dir=VARIANTS_DIR, output_dir=ANNOTATIONS_DIR)
             annotation_success = annotator.run()
 
@@ -400,39 +401,40 @@ def __(
 
     logger.info(f"Annotation complete. Ready for feature engineering.")
     df_annot.attrs['source'] = annotation_source
-
-    return df_annot
+    return (df_annot,)
 
 
 @app.cell
-def __(mo, df_annot):
+def _(df_annot, mo):
     """Show annotation data provenance."""
     annot_source = df_annot.attrs.get('source', 'unknown')
     mo.md(f"""
-**Annotation source:** `{annot_source}`
+    **Annotation source:** `{annot_source}`
 
-Cached annotations skip pyensembl/VEPlac calls; `pipeline` indicates this run hit the Ensembl APIs.
-""")
+    Cached annotations skip pyensembl/VEPlac calls; `pipeline` indicates this run hit the Ensembl APIs.
+    """)
+    return
 
 
 @app.cell
-def __(mo, df_annot):
+def _(df_annot, mo):
     """Display consequence distribution."""
     if "consequence" in df_annot.columns and not df_annot.empty:
         _consequence_counts = df_annot["consequence"].value_counts().to_frame("count")
         mo.md("""
-### Consequence Distribution
-""")
+    ### Consequence Distribution
+    """)
         mo.ui.table(_consequence_counts.head(10).reset_index())
     else:
         mo.md("No consequence data available.")
+    return
 
 
 @app.cell
-def __(df_annot):
+def _(df_annot):
     """
     Pass annotated variants forward.
-    
+
     Detailed feature engineering (gnomAD, conservation, regulatory, domains)
     happens in the next notebook (02_feature_engineering.py) which calls:
     - campaigns/abca4/src/features/regulatory.py (gnomAD + domain mapping)
@@ -441,24 +443,24 @@ def __(df_annot):
     - campaigns/abca4/src/features/splice.py (SpliceAI scores)
     """
     df_domains = df_annot.copy()
-    return df_domains
+    return (df_domains,)
 
 
 @app.cell
-def __(mo):
+def _(mo):
     """Note about domain distribution."""
     mo.md("""
-### Domain Annotation
+    ### Domain Annotation
 
-Domain mapping and regulatory features will be added in the next notebook
-(02_feature_engineering.py) using the authoritative domain configuration
-and gnomAD data.
-""")
-
+    Domain mapping and regulatory features will be added in the next notebook
+    (02_feature_engineering.py) using the authoritative domain configuration
+    and gnomAD data.
+    """)
+    return
 
 
 @app.cell
-def __(mo, pd, df_domains):
+def _(df_domains, mo, pd):
     """Display completeness metrics."""
     _key_cols = [
         "chrom", "pos", "ref", "alt", "clinical_significance",
@@ -475,50 +477,50 @@ def __(mo, pd, df_domains):
         [(k, f"{v:.1%}") for k, v in _completeness.items()],
         columns=["Field", "Completeness"]
     )
-    
-    mo.md("""
-### Annotation Completeness
 
-Key fields completeness check:
-""")
+    mo.md("""
+    ### Annotation Completeness
+
+    Key fields completeness check:
+    """)
     mo.ui.table(_comp_df)
+    return
 
 
 @app.cell
-def __(
-    logger,
-    df_domains, ANNOTATIONS_DIR
-):
+def _(ANNOTATIONS_DIR, df_domains, logger):
     """Export annotated variants to disk."""
     output_path_annot = ANNOTATIONS_DIR / "variants_annotated.parquet"
     df_domains.to_parquet(output_path_annot)
     logger.info(f"Wrote annotated variants to {output_path_annot}")
-    return output_path_annot
+    return (output_path_annot,)
 
 
 @app.cell
-def __(mo, output_path_annot):
+def _(mo, output_path_annot):
     """Confirm export."""
     mo.md(f"""
-✅ **Annotation Complete!**
+    ✅ **Annotation Complete!**
 
-Saved to: `{output_path_annot}`
+    Saved to: `{output_path_annot}`
 
-**Next Step:** Open `02_feature_engineering.py` to add model scores and construct impact metrics.
-""")
+    **Next Step:** Open `02_feature_engineering.py` to add model scores and construct impact metrics.
+    """)
+    return
 
 
 @app.cell
-def __(mo):
+def _(mo):
     """Tie this notebook back to the v1 plan."""
     mo.md("""
-### Plan Alignment
+    ### Plan Alignment
 
-- **Step 1 – Data ingest (ClinVar + partner variants):** Completed above via `filter_abca4_variants.py`, outputs now cached under `data_processed/variants/`.
-- **Step 2 – Annotation & deterministic features:** Completed via `annotate_transcripts.py` (VEP/pyensembl). The resulting `variants_annotated.parquet` is the hand-off into feature engineering.
+    - **Step 1 – Data ingest (ClinVar + partner variants):** Completed above via `filter_abca4_variants.py`, outputs now cached under `data_processed/variants/`.
+    - **Step 2 – Annotation & deterministic features:** Completed via `annotate_transcripts.py` (VEP/pyensembl). The resulting `variants_annotated.parquet` is the hand-off into feature engineering.
 
-This notebook is now the authoritative entry point for Steps 0‑2 of the ABCA4 v1 pipeline.
-""")
+    This notebook is now the authoritative entry point for Steps 0‑2 of the ABCA4 v1 pipeline.
+    """)
+    return
 
 
 if __name__ == "__main__":

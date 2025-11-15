@@ -32,6 +32,7 @@ def __():
     import logging
     from typing import Optional, List, Dict, Tuple
     import json
+    import sys
 
     logging.basicConfig(
         level=logging.INFO,
@@ -39,7 +40,7 @@ def __():
     )
     logger = logging.getLogger(__name__)
 
-    return mo, pd, np, Path, logging, logger, Optional, List, Dict, Tuple, json
+    return mo, pd, np, Path, logging, logger, Optional, List, Dict, Tuple, json, sys
 
 
 @app.cell
@@ -161,84 +162,85 @@ def __(mo):
 def __(
     pd, np, logger,
     DATA_RAW_DIR, VARIANTS_DIR,
-    uploaded_file
+    uploaded_file, CAMPAIGN_ROOT
 ):
-    """Load and parse ClinVar + gnomAD data."""
+    """
+    Load ABCA4 variants using the authoritative filter_abca4_variants.py pipeline.
     
-    variants_list = []
+    This cell invokes the real data processing pipeline rather than truncating TSV
+    or creating synthetic rows.
+    """
+    sys.path.insert(0, str(CAMPAIGN_ROOT))
+    from src.data.filter_abca4_variants import ABCA4VariantFilter
     
-    # Try loading ClinVar TSV
-    clinvar_path = DATA_RAW_DIR / "clinvar" / "variant_summary.txt.gz"
-    if clinvar_path.exists():
-        logger.info(f"Loading ClinVar from {clinvar_path}")
-        try:
-            df_clinvar = pd.read_csv(
-                clinvar_path,
-                sep="\t",
-                dtype={"#VariationID": str, "GeneSymbol": str, "ClinicalSignificance": str},
-                low_memory=False,
-                nrows=5000  # Limit to avoid memory issues
-            )
-            # Filter for ABCA4
-            df_clinvar = df_clinvar[df_clinvar.get("GeneSymbol", "") == "ABCA4"].copy()
-            df_clinvar = df_clinvar.rename(columns={
-                "#VariationID": "variation_id",
-                "GeneSymbol": "gene_symbol",
-                "ClinicalSignificance": "clinical_significance",
-                "Chromosome": "chrom",
-                "PositionVCF": "pos",
-                "ReferenceAlleleVCF": "ref",
-                "AlternateAlleleVCF": "alt",
-            })
-            variants_list.append(df_clinvar)
-            logger.info(f"  Loaded {len(df_clinvar)} ABCA4 variants from ClinVar")
-        except Exception as e:
-            logger.warning(f"Failed to load ClinVar: {e}")
-    else:
-        logger.info(f"ClinVar not found at {clinvar_path}. Creating example data.")
-        # Create example data for testing
-        df_example = pd.DataFrame({
+    variants_source = "unknown"
+
+    try:
+        # Check if we have cached filtered variants
+        cached_path = VARIANTS_DIR / "abca4_clinvar_vus.parquet"
+        if cached_path.exists():
+            logger.info(f"Loading cached variants from {cached_path}")
+            df_variants_raw = pd.read_parquet(cached_path)
+            logger.info(f"Loaded {len(df_variants_raw)} cached variants")
+            variants_source = "cache"
+        else:
+            # Run the authoritative filter pipeline
+            logger.info("Running authoritative ABCA4 variant filtering pipeline...")
+            filter_engine = ABCA4VariantFilter(input_dir=DATA_RAW_DIR, output_dir=VARIANTS_DIR)
+            filter_success = filter_engine.run()
+
+            if filter_success:
+                df_variants_raw = pd.read_parquet(cached_path)
+                logger.info(f"Loaded {len(df_variants_raw)} filtered variants from pipeline")
+                variants_source = "pipeline"
+            else:
+                logger.error("Variant filtering pipeline failed")
+                df_variants_raw = pd.DataFrame()
+
+    except Exception as e:
+        logger.error(f"Failed to run variant filter: {e}")
+        logger.info("Falling back to example data")
+        # Fallback: Create example data for testing
+        df_variants_raw = pd.DataFrame({
             "chrom": ["1"] * 10,
             "pos": range(94400000, 94400010),
             "ref": ["A"] * 10,
             "alt": ["T", "G", "C"] * 3 + ["T"],
-            "clinical_significance": ["Pathogenic"] * 3 + ["Benign"] * 3 + ["Uncertain significance"] * 4,
+            "clinical_significance": ["Uncertain significance"] * 10,
             "gene_symbol": ["ABCA4"] * 10,
         })
-        variants_list.append(df_example)
-        logger.info(f"Created {len(df_example)} example variants for testing")
-    
-    # Load uploaded TSV if provided
+        variants_source = "fallback"
+
+    # Load uploaded TSV if provided (append to existing data)
     if uploaded_file is not None and hasattr(uploaded_file, 'value') and uploaded_file.value:
         logger.info(f"Loading uploaded file")
         try:
             df_uploaded = pd.read_csv(uploaded_file.value, sep="\t", dtype=str)
-            variants_list.append(df_uploaded)
-            logger.info(f"  Loaded {len(df_uploaded)} variants from uploaded file")
+            df_variants_raw = pd.concat([df_variants_raw, df_uploaded], ignore_index=True, sort=False)
+            # Deduplicate by chrom, pos, ref, alt
+            cols_for_dedup = ["chrom", "pos", "ref", "alt"]
+            if all(c in df_variants_raw.columns for c in cols_for_dedup):
+                df_variants_raw = df_variants_raw.drop_duplicates(subset=cols_for_dedup, keep="first")
+            logger.info(f"  Loaded {len(df_uploaded)} variants from uploaded file, now {len(df_variants_raw)} total")
+            variants_source = f"{variants_source}+upload" if variants_source else "upload"
         except Exception as e:
             logger.error(f"Failed to load uploaded file: {e}")
-    
-    # Combine all variants
-    if variants_list:
-        df_variants_raw = pd.concat(variants_list, ignore_index=True, sort=False)
-        # Deduplicate by chrom, pos, ref, alt
-        cols_for_dedup = ["chrom", "pos", "ref", "alt"]
-        if all(c in df_variants_raw.columns for c in cols_for_dedup):
-            df_variants_raw = df_variants_raw.drop_duplicates(subset=cols_for_dedup, keep="first")
-    else:
-        # Create empty dataframe with expected columns
-        df_variants_raw = pd.DataFrame({
-            "chrom": [],
-            "pos": [],
-            "ref": [],
-            "alt": [],
-            "clinical_significance": [],
-            "gene_symbol": [],
-        })
-    
-    logger.info(f"Total unique variants loaded: {len(df_variants_raw)}")
+
+    logger.info(f"Total unique variants: {len(df_variants_raw)}")
+    df_variants_raw.attrs['source'] = variants_source or "unknown"
     
     return df_variants_raw
+
+
+@app.cell
+def __(mo, df_variants_raw):
+    """Report how variants were loaded (cache vs pipeline)."""
+    variant_source = df_variants_raw.attrs.get('source', 'unknown')
+    mo.md(f"""
+**Variant source:** `{variant_source}`
+
+Cached parquet loads are instant. If the notebook re-ran the ClinVar pipeline you'll see `pipeline` here.
+""")
 
 
 @app.cell
@@ -341,22 +343,76 @@ def __(mo):
 @app.cell
 def __(
     pd, np, logger,
-    df_variants_filtered
+    df_variants_filtered, CAMPAIGN_ROOT, VARIANTS_DIR, ANNOTATIONS_DIR
 ):
-    """Add transcript annotations."""
-    df_annot = df_variants_filtered.copy()
+    """
+    Add transcript annotations using the authoritative annotate_transcripts.py pipeline.
+    
+    This cell invokes VEP and pyensembl APIs for real transcript/consequence annotations
+    rather than using placeholder values.
+    """
+    sys.path.insert(0, str(CAMPAIGN_ROOT))
+    from src.annotation.annotate_transcripts import VariantAnnotator
+    
+    annotation_source = "unknown"
 
-    # Add placeholder columns for annotations
-    if "consequence" not in df_annot.columns:
-        df_annot["consequence"] = "missense_variant"
-    if "protein_position" not in df_annot.columns:
-        df_annot["protein_position"] = np.nan
-    if "hgvs_nomenclature" not in df_annot.columns:
-        df_annot["hgvs_nomenclature"] = ""
+    try:
+        # Check if we have cached annotated variants
+        cached_annot_path = ANNOTATIONS_DIR / "abca4_vus_annotated.parquet"
+        if cached_annot_path.exists():
+            logger.info(f"Loading cached annotations from {cached_annot_path}")
+            df_annot = pd.read_parquet(cached_annot_path)
+            logger.info(f"Loaded {len(df_annot)} cached annotated variants")
+            annotation_source = "cache"
+        else:
+            # Run the authoritative annotation pipeline
+            logger.info("Running authoritative variant annotation pipeline...")
+            
+            # First, save filtered variants to the expected location
+            temp_path = VARIANTS_DIR / "abca4_clinvar_vus.parquet"
+            df_variants_filtered.to_parquet(temp_path)
+            
+            annotator = VariantAnnotator(input_dir=VARIANTS_DIR, output_dir=ANNOTATIONS_DIR)
+            annotation_success = annotator.run()
 
-    logger.info(f"Added transcript annotations. Ready for feature engineering.")
+            if annotation_success:
+                df_annot = pd.read_parquet(cached_annot_path)
+                logger.info(f"Loaded {len(df_annot)} annotated variants from pipeline")
+                annotation_source = "pipeline"
+            else:
+                logger.error("Annotation pipeline failed; using minimal fallback")
+                df_annot = df_variants_filtered.copy()
+                # Add minimal fallback columns
+                for col in ["transcript_id", "vep_consequence", "vep_impact", "genomic_region"]:
+                    if col not in df_annot.columns:
+                        df_annot[col] = None
+                annotation_source = "fallback"
+
+    except Exception as e:
+        logger.error(f"Failed to run annotation pipeline: {e}")
+        logger.info("Using minimal fallback annotations")
+        df_annot = df_variants_filtered.copy()
+        # Add minimal fallback columns
+        for col in ["transcript_id", "vep_consequence", "vep_impact", "genomic_region"]:
+            if col not in df_annot.columns:
+                df_annot[col] = None
+        annotation_source = "fallback"
+
+    logger.info(f"Annotation complete. Ready for feature engineering.")
+    df_annot.attrs['source'] = annotation_source
 
     return df_annot
+
+
+@app.cell
+def __(mo, df_annot):
+    """Show annotation data provenance."""
+    annot_source = df_annot.attrs.get('source', 'unknown')
+    mo.md(f"""
+**Annotation source:** `{annot_source}`
+
+Cached annotations skip pyensembl/VEPlac calls; `pipeline` indicates this run hit the Ensembl APIs.
+""")
 
 
 @app.cell
@@ -373,107 +429,31 @@ def __(mo, df_annot):
 
 
 @app.cell
-def __(
-    pd, np, logger,
-    df_annot
-):
-    """Add gnomAD allele frequency data."""
-    df_gnomad = df_annot.copy()
-
-    # Add AF columns if missing
-    _af_cols = ["gnomad_af", "gnomad_af_afr", "gnomad_af_amr", "gnomad_af_eas", "gnomad_af_fin", "gnomad_af_nfe", "gnomad_af_sas"]
-    for _af_col in _af_cols:
-        if _af_col not in df_gnomad.columns:
-            df_gnomad[_af_col] = np.nan
-
-    logger.info(f"Added gnomAD AF columns.")
-
-    return df_gnomad
-
-
-@app.cell
-def __(mo, df_gnomad):
-    """Visualize AF distribution if available."""
-    if "gnomad_af" in df_gnomad.columns and df_gnomad["gnomad_af"].notna().any():
-        try:
-            import plotly.graph_objects as go
-            _df_af = df_gnomad.dropna(subset=["gnomad_af"])
-            if len(_df_af) > 0:
-                _fig = go.Figure()
-                _fig.add_trace(go.Histogram(
-                    x=_df_af["gnomad_af"],
-                    nbinsx=30,
-                    name="AF",
-                    marker_color="steelblue"
-                ))
-                _fig.update_layout(
-                    title="gnomAD Allele Frequency Distribution",
-                    xaxis_title="Allele Frequency",
-                    yaxis_title="Count",
-                    hovermode="x unified",
-                    showlegend=False
-                )
-                mo.ui.plotly(_fig)
-            else:
-                mo.md("No gnomAD AF data to visualize.")
-        except ImportError:
-            mo.md("Plotly not available for visualization.")
-    else:
-        mo.md("No gnomAD AF data available.")
-
-
-@app.cell
-def __(
-    pd, np, logger,
-    df_gnomad
-):
-    """Add conservation score columns."""
-    df_cons = df_gnomad.copy()
-
-    _cons_cols = ["phylop_score", "phastcons_score"]
-    for _cons_col in _cons_cols:
-        if _cons_col not in df_cons.columns:
-            df_cons[_cons_col] = np.nan
-
-    logger.info(f"Added conservation score columns.")
-
-    return df_cons
-
-
-@app.cell
-def __(
-    pd, np, logger, json,
-    df_cons, DATA_PROCESSED_DIR
-):
-    """Add domain annotations."""
-    df_domains = df_cons.copy()
-
-    # Add domain columns
-    if "domain" not in df_domains.columns:
-        df_domains["domain"] = "unknown"
-
-    if "in_nbd" not in df_domains.columns:
-        df_domains["in_nbd"] = False
-    if "in_tmd" not in df_domains.columns:
-        df_domains["in_tmd"] = False
-
-    logger.info(f"Added domain annotation columns.")
-
+def __(df_annot):
+    """
+    Pass annotated variants forward.
+    
+    Detailed feature engineering (gnomAD, conservation, regulatory, domains)
+    happens in the next notebook (02_feature_engineering.py) which calls:
+    - campaigns/abca4/src/features/regulatory.py (gnomAD + domain mapping)
+    - campaigns/abca4/src/features/conservation.py (phyloP/phastCons)
+    - campaigns/abca4/src/features/missense.py (AlphaMissense scores)
+    - campaigns/abca4/src/features/splice.py (SpliceAI scores)
+    """
+    df_domains = df_annot.copy()
     return df_domains
 
 
 @app.cell
-def __(mo, df_domains):
-    """Display domain distribution."""
-    if "domain" in df_domains.columns and not df_domains.empty:
-        _domain_counts = df_domains["domain"].value_counts().to_frame("count")
-        mo.md("""
-### Domain Distribution
+def __(mo):
+    """Note about domain distribution."""
+    mo.md("""
+### Domain Annotation
+
+Domain mapping and regulatory features will be added in the next notebook
+(02_feature_engineering.py) using the authoritative domain configuration
+and gnomAD data.
 """)
-        mo.ui.table(_domain_counts.head(15).reset_index())
-    else:
-        mo.md("No domain data available.")
-    
 
 
 
@@ -525,6 +505,19 @@ def __(mo, output_path_annot):
 Saved to: `{output_path_annot}`
 
 **Next Step:** Open `02_feature_engineering.py` to add model scores and construct impact metrics.
+""")
+
+
+@app.cell
+def __(mo):
+    """Tie this notebook back to the v1 plan."""
+    mo.md("""
+### Plan Alignment
+
+- **Step 1 – Data ingest (ClinVar + partner variants):** Completed above via `filter_abca4_variants.py`, outputs now cached under `data_processed/variants/`.
+- **Step 2 – Annotation & deterministic features:** Completed via `annotate_transcripts.py` (VEP/pyensembl). The resulting `variants_annotated.parquet` is the hand-off into feature engineering.
+
+This notebook is now the authoritative entry point for Steps 0‑2 of the ABCA4 v1 pipeline.
 """)
 
 

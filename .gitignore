@@ -170,9 +170,8 @@ release%2F*/
 # uv.lock
 
 # User scripts and temporary
-/src/
+# (keep specific paths here if needed)
 
 # Marimo session caches (generated during notebook execution)
 **/__marimo__/
 *.marimo
-

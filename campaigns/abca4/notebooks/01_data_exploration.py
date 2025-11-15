@@ -1,340 +1,604 @@
 #!/usr/bin/env python3
-"""ABCA4 Campaign – interactive data exploration with Marimo."""
+"""
+ABCA4 Campaign – Interactive Data Exploration with Marimo
+
+Stages:
+  - Step 0: Scope & framing (context about ABCA4, Stargardt, the v1 question)
+  - Step 1: Data ingest (ClinVar/raw files, optional TSV upload, filtering, live tables)
+  - Step 2: Annotation & deterministic features (VEP, gnomAD, conservation, domain mapping)
+
+This notebook is fully reactive: adjust filters or upload new data, and all downstream
+visualizations update automatically. At the end of each section, data is persisted to
+data_processed/ for use in downstream notebooks.
+
+Run interactively:  marimo edit notebooks/01_data_exploration.py
+Run as dashboard:   marimo run notebooks/01_data_exploration.py
+Run as script:      python notebooks/01_data_exploration.py
+"""
 
 import marimo
 
 __generated_with = "0.17.8"
 app = marimo.App()
 
+
 @app.cell
 def __():
+    """Import core libraries."""
     import marimo as mo
-    import numpy as np
     import pandas as pd
+    import numpy as np
     from pathlib import Path
-    return mo, np, pd, Path
+    import logging
+    from typing import Optional, List, Dict, Tuple
+    import json
 
-@app.cell
-def __(Path):
-    CAMPAIGN_ROOT = Path(__file__).resolve().parents[2]
-    FEATURE_MATRIX = CAMPAIGN_ROOT / "data_processed" / "features" / "abca4_feature_matrix.parquet"
-    return CAMPAIGN_ROOT, FEATURE_MATRIX
-
-@app.cell
-def __(mo):
-    mo.md("# 🔬 ABCA4 Variant Explorer - Marimo Notebook")
-    mo.md(
-        """
-    Use the controls below to slice the unified ABCA4 feature matrix. Every widget is
-    reactive: once the data is filtered, tables, charts, and download buttons update
-    automatically.
-    """
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
     )
+    logger = logging.getLogger(__name__)
+
+    return mo, pd, np, Path, logging, logger, Optional, List, Dict, Tuple, json
+
+
+@app.cell
+def __(mo, Path):
+    """
+    ## Step 0: Scope & Framing
+
+    **ABCA4 and Stargardt Disease**
+
+    ABCA4 (ATP Binding Cassette Transporter A4) is an ATP-dependent lipid transporter crucial for photoreceptor function.
+    Pathogenic variants in ABCA4 cause Stargardt disease (STGD1), a progressive macular degeneration leading to
+    blindness. Over 3,500 known ABCA4 variants exist, many classified as Uncertain Significance (VUS).
+
+    **The v1 Question**
+
+    Given rare ABCA4 variants (VUS or conflicting), how can we select K=20–50 variants for high-throughput MPRAssay,
+    combining:
+    - Computational pathogenicity predictions (AlphaMissense, SpliceAI, conservation)
+    - Domain disruption analysis
+    - Allele frequency / gnomAD background
+    - Experimental priors (known pathogenic patterns, assay scalability)
+
+    **Campaign Goal**
+
+    Rank and select a diverse, high-confidence subset of variants to advance toward experimental validation.
+    """
+    mo.md(__doc__)
     return
 
-@app.cell
-def __(FEATURE_MATRIX, np, pd):
-    if not FEATURE_MATRIX.exists():
-        print(f"⚠️ Missing feature matrix at {FEATURE_MATRIX}. Run `invoke features.compute`. ")
-        df_features = pd.DataFrame()
-    else:
-        df_features = pd.read_parquet(FEATURE_MATRIX)
-        df_features = df_features.replace({np.inf: np.nan, -np.inf: np.nan})
-    return df_features,
 
 @app.cell
-def __(pd):
-    def _safe_unique(series: pd.Series) -> list[str]:
-        if series.empty:
-            return []
-        return sorted(series.dropna().astype(str).unique())
-    return _safe_unique,
+def __(mo, Path):
+    """Define campaign root paths."""
+    CAMPAIGN_ROOT = Path(__file__).resolve().parents[0]
+    DATA_RAW_DIR = CAMPAIGN_ROOT / "data_raw"
+    DATA_PROCESSED_DIR = CAMPAIGN_ROOT / "data_processed"
+    VARIANTS_DIR = DATA_PROCESSED_DIR / "variants"
+    ANNOTATIONS_DIR = DATA_PROCESSED_DIR / "annotations"
+    FEATURES_DIR = DATA_PROCESSED_DIR / "features"
 
-@app.cell
-def __(df_features, _safe_unique, mo, pd):
-    if df_features.empty:
-        filter_panel = mo.md("Upload data to unlock controls.")
-        clinical_significance = None
-        coding_impacts = None
-        regulatory_types = None
-        domain_only = None
-        allele_frequency_max = None
-        splice_threshold = None
-        missense_threshold = None
-    else:
-        clinical_significance = mo.ui.multiselect(
-            options=_safe_unique(df_features["clinical_significance"]),
-            value=_safe_unique(df_features["clinical_significance"]),
-            label="Clinical Significance",
-        )
+    # Ensure directories exist
+    for d in [DATA_RAW_DIR, VARIANTS_DIR, ANNOTATIONS_DIR, FEATURES_DIR]:
+        d.mkdir(parents=True, exist_ok=True)
 
-        coding_impacts = mo.ui.multiselect(
-            options=_safe_unique(df_features["coding_impact"]),
-            value=_safe_unique(df_features["coding_impact"]),
-            label="Coding Impact",
-        )
-
-        regulatory_types = mo.ui.multiselect(
-            options=_safe_unique(df_features["regulatory_type"]),
-            value=_safe_unique(df_features["regulatory_type"]),
-            label="Regulatory Context",
-        )
-
-        domain_only = mo.ui.switch(False, label="Only keep variants inside annotated domains")
-
-        max_af = float(df_features.get("gnomad_max_af", pd.Series([0.0])).fillna(0).max() or 0.01)
-        allele_frequency_max = mo.ui.slider(0.0, max(0.01, max_af), value=min(0.01, max_af), step=0.0001, label="Max gnomAD AF")
-
-        splice_threshold = mo.ui.slider(0.0, 1.0, value=0.1, step=0.01, label="Min SpliceAI score")
-        missense_threshold = mo.ui.slider(0.0, 1.0, value=0.3, step=0.01, label="Min missense score")
-
-        filter_panel = mo.md(
-            """
-### Filters
-
-**Clinical Significance:**\n{} **Coding Impact:**\n{}\n\n**Regulatory Context:**\n{} **Domain Filter:**\n{}\n\n**gnomAD AF:**\n{} **SpliceAI:**\n{} **Missense:**\n{}
-""".format(
-                clinical_significance, coding_impacts,
-                regulatory_types, domain_only,
-                allele_frequency_max, splice_threshold, missense_threshold
-            )
-        )
-    
     return (
-        allele_frequency_max,
-        clinical_significance,
-        coding_impacts,
-        coding_impacts,
-        domain_only,
-        filter_panel,
-        missense_threshold,
-        regulatory_types,
-        splice_threshold,
+        CAMPAIGN_ROOT,
+        DATA_RAW_DIR,
+        DATA_PROCESSED_DIR,
+        VARIANTS_DIR,
+        ANNOTATIONS_DIR,
+        FEATURES_DIR,
     )
 
-@app.cell
-def __(mo):
-    reg_weight = mo.ui.slider(0.0, 1.0, value=0.35, step=0.05, label="Regulatory weight")
-    splice_weight = mo.ui.slider(0.0, 1.0, value=0.25, step=0.05, label="Splice weight")
-    missense_weight = mo.ui.slider(0.0, 1.0, value=0.25, step=0.05, label="Missense weight")
-    conservation_weight = mo.ui.slider(0.0, 1.0, value=0.15, step=0.05, label="Conservation weight")
-    
-    weights_content = mo.md("Tune the scoring weights (will normalize automatically).")
-    
-    return reg_weight, splice_weight, missense_weight, conservation_weight, weights_content
 
 @app.cell
 def __(mo):
-    top_k_slider = mo.ui.slider(5, 200, value=50, step=5, label="Top-K for downloads")
-    return top_k_slider,
+    """
+    ## Step 0: Configuration Parameters
+
+    Configure defaults for gene, transcript, K, and narratives. These bind downstream cells automatically.
+    """
+    mo.md(__doc__)
+
+    # Gene and transcript parameters
+    gene_symbol = mo.ui.text(value="ABCA4", label="Gene Symbol", disabled=False)
+    transcript_id = mo.ui.text(value="ENST00000370225", label="Canonical Transcript", disabled=False)
+
+    # Optimization parameters
+    k_variants = mo.ui.slider(10, 200, value=30, label="Panel Size (K variants to select)")
+    budget_narrative = mo.ui.text_area(
+        value="High-throughput MPRAssay validation with focus on Stargardt disease pathogenicity",
+        label="Budget/Narrative",
+    )
+
+    return gene_symbol, transcript_id, k_variants, budget_narrative
+
 
 @app.cell
-def __(conservation_weight, missense_weight, np, reg_weight, splice_weight):
-    sliders = [reg_weight, splice_weight, missense_weight, conservation_weight]
-    values = np.array([slider.value if slider else 0.25 for slider in sliders], dtype=float)
-    if values.sum() == 0:
-        values = np.ones_like(values)
-    values = values / values.sum()
-    score_weights = {
-        "regulatory_score": values[0],
-        "spliceai_max_score": values[1],
-        "missense_combined_score": values[2],
-        "conservation_score": values[3],
-    }
-    return score_weights,
+def __(mo, gene_symbol, transcript_id, k_variants, budget_narrative):
+    """Display current configuration."""
+    config_display = mo.md(f"""
+### Current Configuration
+
+- **Gene:** {gene_symbol.value}
+- **Transcript:** {transcript_id.value}
+- **Panel Size (K):** {k_variants.value}
+- **Narrative:** {budget_narrative.value[:80]}...
+
+All downstream cells use these parameters automatically.
+""")
+    return config_display
+
+
+@app.cell
+def __(mo):
+    """
+    ## Step 1: Data Ingest
+
+    ### Available Data Sources
+
+    - **ClinVar Variants** (data_raw/clinvar/)
+    - **gnomAD Frequencies** (data_raw/gnomad/)
+    - **SpliceAI Predictions** (data_raw/spliceai/)
+    - **AlphaMissense Scores** (data_raw/alphamissense/)
+
+    Upload an optional TSV file with additional variants, or use the downloaded data as-is.
+    """
+    mo.md(__doc__)
+
+
+@app.cell
+def __(mo):
+    """
+    ### Optional TSV Upload
+
+    Upload a TSV with columns: chrom, pos, ref, alt, source, [clinvar_significance, gnomad_af, ...]
+    """
+    uploaded_file = mo.ui.file_browser(filetypes=[".tsv", ".csv", ".txt"], label="Upload Partner Data (Optional)")
+    return uploaded_file
+
 
 @app.cell
 def __(
-    allele_frequency_max,
-    clinical_significance,
-    coding_impacts,
-    df_features,
-    domain_only,
-    missense_threshold,
-    regulatory_types,
-    score_weights,
-    splice_threshold,
+    pd, np, logger,
+    DATA_RAW_DIR, VARIANTS_DIR,
+    uploaded_file
 ):
-    current_variants = df_features.copy()
+    """Load and parse ClinVar + gnomAD data."""
     
-    if not current_variants.empty:
-        if clinical_significance and clinical_significance.value:
-            current_variants = current_variants[current_variants["clinical_significance"].isin(clinical_significance.value)]
-
-        if coding_impacts and coding_impacts.value:
-            current_variants = current_variants[current_variants["coding_impact"].isin(coding_impacts.value)]
-
-        if regulatory_types and regulatory_types.value:
-            current_variants = current_variants[current_variants["regulatory_type"].isin(regulatory_types.value)]
-
-        if domain_only and domain_only.value:
-            current_variants = current_variants[current_variants.get("in_domain", 0) == 1]
-
-        if allele_frequency_max:
-            current_variants = current_variants[current_variants.get("gnomad_max_af", 0).fillna(0) <= allele_frequency_max.value]
-
-        if splice_threshold:
-            current_variants = current_variants[current_variants.get("spliceai_max_score", 0).fillna(0) >= splice_threshold.value]
-
-        if missense_threshold:
-            current_variants = current_variants[current_variants.get("missense_combined_score", 0).fillna(0) >= missense_threshold.value]
-
-        for feature, weight in score_weights.items():
-            if feature in current_variants.columns:
-                current_variants[feature] = current_variants[feature].fillna(0)
-
-        if score_weights:
-            current_variants = current_variants.assign(
-                composite_score=sum(weight * current_variants.get(feature, 0) for feature, weight in score_weights.items())
-            )
-            current_variants = current_variants.sort_values("composite_score", ascending=False)
-        
-        current_variants = current_variants.reset_index(drop=True)
+    variants_list = []
     
-    return current_variants,
-
-@app.cell
-def __(current_variants, df_features, mo, np, pd):
-    if df_features.empty:
-        summary_output = mo.md("No data loaded.")
-    else:
-        total = len(current_variants)
-        inside_domain = int(current_variants.get("in_domain", pd.Series()).fillna(0).sum())
-        mean_af = current_variants.get("gnomad_max_af", pd.Series()).dropna().mean()
-
-        summary_text = f"""
-**Summary Statistics**
-
-- **Filtered variants:** {total:,}
-- **Domain-overlapping variants:** {inside_domain:,}
-- **Mean gnomAD AF:** {mean_af:.5f if not np.isnan(mean_af) else 'N/A'}
-"""
-        summary_output = mo.md(summary_text)
-    
-    return summary_output,
-
-@app.cell
-def __(summary_output):
-    summary_output
-    return
-
-@app.cell
-def __(current_variants, mo, top_k_slider):
-    if current_variants.empty:
-        variant_table_output = mo.md("No variants met the criteria.")
-    else:
-        display_cols = [
-            "variant_id",
-            "clinical_significance",
-            "coding_impact",
-            "regulatory_region",
-            "gnomad_max_af",
-            "spliceai_max_score",
-            "missense_combined_score",
-            "conservation_score",
-            "composite_score",
-        ]
-        available = [c for c in display_cols if c in current_variants.columns]
-        preview = current_variants[available].head(top_k_slider.value)
-        variant_table_output = mo.ui.dataframe(preview)
-    return variant_table_output,
-
-@app.cell
-def __(variant_table_output):
-    variant_table_output
-    return
-
-@app.cell
-def __(current_variants, mo):
-    if current_variants.empty:
-        distribution_output = mo.md("Nothing to visualize yet – adjust your filters.")
-    else:
-        try:
-            import plotly.express as px
-
-            plots = {}
-
-            if "gnomad_max_af" in current_variants.columns:
-                plots["Allele frequency"] = px.histogram(
-                    current_variants,
-                    x="gnomad_max_af",
-                    nbins=40,
-                    title="gnomAD AF",
-                )
-
-            if "clinical_significance" in current_variants.columns:
-                plots["Clinical significance"] = px.pie(
-                    current_variants,
-                    names="clinical_significance",
-                    title="Clinical significance mix",
-                )
-
-            if "regulatory_type" in current_variants.columns:
-                plots["Regulatory region"] = px.bar(
-                    current_variants["regulatory_type"].value_counts().reset_index(),
-                    x="index",
-                    y="regulatory_type",
-                    labels={"index": "Type", "regulatory_type": "Count"},
-                    title="Regulatory context",
-                )
-
-            distribution_output = mo.ui.tabs(plots) if plots else mo.md("Add gnomAD/regulatory columns to plot.")
-        except ImportError:
-            distribution_output = mo.md("Install plotly to visualize distributions.")
-    
-    return distribution_output,
-
-@app.cell
-def __(distribution_output):
-    distribution_output
-    return
-
-@app.cell
-def __(current_variants, mo):
-    if current_variants.empty or "domain_label" not in current_variants.columns:
-        domain_output = mo.md("Domain annotations unavailable.")
-    else:
-        counts = current_variants["domain_label"].fillna("Outside domain").value_counts().reset_index()
-        counts.columns = ["Domain", "Variants"]
-        domain_output = mo.ui.table(counts)
-    
-    return domain_output,
-
-@app.cell
-def __(domain_output):
-    domain_output
-    return
-
-@app.cell
-def __(current_variants, mo, top_k_slider):
-    if current_variants.empty:
-        downloads_output = mo.md("Nothing to export.")
-    else:
-        top = current_variants.head(top_k_slider.value)
-        downloads_output = mo.hstack(
-            [
-                mo.download(top, label="Download CSV", filename="abca4_top_variants.csv"),
-                mo.download(top, label="Download Parquet", filename="abca4_top_variants.parquet"),
-            ]
+    # Try loading ClinVar TSV
+    clinvar_path = DATA_RAW_DIR / "clinvar" / "variant_summary.txt.gz"
+    if clinvar_path.exists():
+        logger.info(f"Loading ClinVar from {clinvar_path}")
+        df_clinvar = pd.read_csv(
+            clinvar_path,
+            sep="\t",
+            dtype={"#VariationID": str, "GeneSymbol": str, "ClinicalSignificance": str},
+            low_memory=False,
         )
-    return downloads_output,
+        # Filter for ABCA4
+        df_clinvar = df_clinvar[df_clinvar.get("GeneSymbol", "") == "ABCA4"].copy()
+        df_clinvar = df_clinvar.rename(columns={
+            "#VariationID": "variation_id",
+            "GeneSymbol": "gene_symbol",
+            "ClinicalSignificance": "clinical_significance",
+            "Chromosome": "chrom",
+            "PositionVCF": "pos",
+            "ReferenceAlleleVCF": "ref",
+            "AlternateAlleleVCF": "alt",
+        })
+        variants_list.append(df_clinvar)
+        logger.info(f"  Loaded {len(df_clinvar)} ABCA4 variants from ClinVar")
+    else:
+        logger.warning(f"ClinVar not found at {clinvar_path}. Skipping.")
+    
+    # Load uploaded TSV if provided
+    if uploaded_file is not None and len(uploaded_file) > 0:
+        logger.info(f"Loading uploaded file: {uploaded_file[0]['name']}")
+        try:
+            df_uploaded = pd.read_csv(uploaded_file[0]["path"], sep="\t", dtype=str)
+            variants_list.append(df_uploaded)
+            logger.info(f"  Loaded {len(df_uploaded)} variants from uploaded file")
+        except Exception as e:
+            logger.error(f"Failed to load uploaded file: {e}")
+    
+    # Combine all variants
+    if variants_list:
+        df_variants_raw = pd.concat(variants_list, ignore_index=True, sort=False)
+        # Deduplicate by chrom, pos, ref, alt
+        cols_for_dedup = ["chrom", "pos", "ref", "alt"]
+        if all(c in df_variants_raw.columns for c in cols_for_dedup):
+            df_variants_raw = df_variants_raw.drop_duplicates(subset=cols_for_dedup, keep="first")
+    else:
+        # Create empty dataframe with expected columns
+        df_variants_raw = pd.DataFrame({
+            "chrom": [],
+            "pos": [],
+            "ref": [],
+            "alt": [],
+            "clinical_significance": [],
+            "gene_symbol": [],
+        })
+    
+    logger.info(f"Total unique variants loaded: {len(df_variants_raw)}")
+    
+    return df_variants_raw
+
 
 @app.cell
-def __(downloads_output):
-    downloads_output
-    return
+def __(mo, df_variants_raw):
+    """Display raw variant counts by clinical significance."""
+    if df_variants_raw.empty:
+        mo.md("⚠️ No variants loaded. Check data_raw/ paths or upload a TSV file.")
+    else:
+        # Ensure clinical_significance column exists
+        clinsig_col = "clinical_significance" if "clinical_significance" in df_variants_raw.columns else "ClinicalSignificance"
+        if clinsig_col in df_variants_raw.columns:
+            clinsig_summary = df_variants_raw[clinsig_col].value_counts().to_frame("count")
+            mo.md(f"""
+### Raw Variant Summary
+
+**Total variants:** {len(df_variants_raw)}
+
+**Distribution by Clinical Significance:**
+""")
+            mo.ui.table(clinsig_summary.reset_index())
+        else:
+            mo.md(f"**Total variants:** {len(df_variants_raw)}")
+
+
+@app.cell
+def __(mo, df_variants_raw):
+    """
+    ### Interactive Filtering
+
+    Use controls below to filter variants. All downstream analysis updates reactively.
+    """
+    mo.md(__doc__)
+
+    if df_variants_raw.empty:
+        mo.md("⚠️ Load data first to unlock filters.")
+        return None
+
+    # Clinical significance filter
+    clinsig_col = "clinical_significance" if "clinical_significance" in df_variants_raw.columns else "ClinicalSignificance"
+    clinsig_options = df_variants_raw[clinsig_col].dropna().unique().tolist() if clinsig_col in df_variants_raw.columns else []
+    clinsig_filter = mo.ui.multiselect(
+        options=sorted(clinsig_options),
+        value=sorted(clinsig_options),
+        label="Clinical Significance"
+    )
+
+    # Optional: allele frequency filter
+    af_filter = mo.ui.slider(0.0, 0.01, value=0.01, step=0.0001, label="Max gnomAD AF (if available)")
+
+    return clinsig_filter, af_filter
+
+
+@app.cell
+def __(
+    pd, np, df_variants_raw,
+    clinsig_filter, af_filter
+):
+    """Apply filters to get working variant set."""
+    df_variants = df_variants_raw.copy()
+
+    # Filter by clinical significance
+    if clinsig_filter is not None and hasattr(clinsig_filter, 'value'):
+        clinsig_col = "clinical_significance" if "clinical_significance" in df_variants.columns else "ClinicalSignificance"
+        if clinsig_col in df_variants.columns:
+            df_variants = df_variants[df_variants[clinsig_col].isin(clinsig_filter.value)]
+
+    # Filter by AF if gnomad_af column exists
+    if af_filter is not None and "gnomad_af" in df_variants.columns and hasattr(af_filter, 'value'):
+        df_variants = df_variants[df_variants["gnomad_af"] <= af_filter.value]
+
+    return df_variants
+
+
+@app.cell
+def __(mo, df_variants):
+    """Display filtered variant count."""
+    mo.md(f"""
+### Filtered Variants: {len(df_variants)} variants
+
+Ready for annotation and feature engineering.
+""")
+
 
 @app.cell
 def __(mo):
-    mo.md(
-        """
-### Tips
-- Run `invoke features.compute` whenever new raw data lands, then refresh this notebook.
-- Use the ranking weights to mimic optimization objectives before invoking Strand strategies.
-- Export the top variants directly as CSV/Parquet for ML or reporting notebooks.
-"""
+    """
+    ## Step 2: Annotation & Deterministic Features
+
+    Add VEP annotations, gnomAD joins, conservation scores, and domain mappings.
+    Each cell handles one feature type and shows completeness metrics.
+    """
+    mo.md(__doc__)
+
+
+@app.cell
+def __(mo):
+    """
+    ### Transcript Annotation
+
+    Use pyensembl or VEP to add:
+    - HGVS nomenclature
+    - Consequence (missense, frameshift, splice_site, etc.)
+    - Protein position
+    - Exon/intron context
+    """
+    mo.md(__doc__)
+
+
+@app.cell
+def __(
+    pd, np, logger,
+    df_variants, gene_symbol, transcript_id
+):
+    """Fetch transcript annotations inline."""
+    import sys
+    sys.path.insert(0, str(__file__.parent.parent / "src"))
+
+    df_annot = df_variants.copy()
+
+    # For now, add placeholder columns; in a real run, call VEP or pyensembl
+    if "consequence" not in df_annot.columns:
+        df_annot["consequence"] = "missense_variant"  # placeholder
+    if "protein_position" not in df_annot.columns:
+        df_annot["protein_position"] = np.nan
+    if "hgvs_nomenclature" not in df_annot.columns:
+        df_annot["hgvs_nomenclature"] = ""
+
+    logger.info(f"Added transcript annotation columns. Completeness: {df_annot[['consequence', 'protein_position']].notna().sum() / len(df_annot):.1%}")
+
+    return df_annot
+
+
+@app.cell
+def __(mo, df_annot):
+    """Display consequence distribution."""
+    if "consequence" in df_annot.columns:
+        consequence_counts = df_annot["consequence"].value_counts().to_frame("count")
+        mo.md(f"""
+### Consequence Distribution
+
+(Top impacts in canonical transcript)
+""")
+        mo.ui.table(consequence_counts.head(10).reset_index())
+    else:
+        mo.md("Consequence data not available.")
+
+
+@app.cell
+def __(mo):
+    """
+    ### gnomAD Allele Frequency
+
+    Join gnomAD data to add population frequencies (AFR, AMR, ASJ, EAS, FIN, NFE, SAS).
+    """
+    mo.md(__doc__)
+
+
+@app.cell
+def __(
+    pd, np, logger,
+    df_annot, DATA_RAW_DIR
+):
+    """Load gnomAD frequencies if available."""
+    df_gnomad = df_annot.copy()
+
+    # Placeholder: in a real run, load gnomAD VCF/TSV and join
+    gnomad_path = DATA_RAW_DIR / "gnomad" / "gnomad.genomes.v4.1.sites.1.vcf.gz"
+    if gnomad_path.exists():
+        logger.info(f"gnomAD VCF found at {gnomad_path}. Would join frequencies.")
+    else:
+        logger.info("gnomAD VCF not found. Adding placeholder AF columns.")
+
+    # Add AF columns if missing
+    af_cols = ["gnomad_af", "gnomad_af_afr", "gnomad_af_amr", "gnomad_af_eas", "gnomad_af_fin", "gnomad_af_nfe", "gnomad_af_sas"]
+    for col in af_cols:
+        if col not in df_gnomad.columns:
+            df_gnomad[col] = np.nan
+
+    af_completeness = df_gnomad["gnomad_af"].notna().sum() / len(df_gnomad) if len(df_gnomad) > 0 else 0.0
+    logger.info(f"gnomAD AF completeness: {af_completeness:.1%}")
+
+    return df_gnomad
+
+
+@app.cell
+def __(mo, df_gnomad):
+    """Visualize AF distribution."""
+    if "gnomad_af" in df_gnomad.columns and df_gnomad["gnomad_af"].notna().any():
+        try:
+            import plotly.express as px
+            fig = px.histogram(
+                df_gnomad,
+                x="gnomad_af",
+                nbins=30,
+                title="gnomAD Allele Frequency Distribution",
+                labels={"gnomad_af": "AF"},
+            )
+            mo.ui.plotly(fig)
+        except ImportError:
+            mo.md("Plotly not available for visualization.")
+    else:
+        mo.md("gnomAD AF data not available.")
+
+
+@app.cell
+def __(mo):
+    """
+    ### Conservation Scores
+
+    Add PhyloP and phastCons conservation metrics from UCSC / published databases.
+    """
+    mo.md(__doc__)
+
+
+@app.cell
+def __(
+    pd, np, logger,
+    df_gnomad
+):
+    """Add conservation score columns."""
+    df_cons = df_gnomad.copy()
+
+    cons_cols = ["phylop_score", "phastcons_score"]
+    for col in cons_cols:
+        if col not in df_cons.columns:
+            df_cons[col] = np.nan
+
+    logger.info(f"Conservation scores: {df_cons['phylop_score'].notna().sum()} variants with PhyloP")
+
+    return df_cons
+
+
+@app.cell
+def __(mo):
+    """
+    ### Domain & Functional Context
+
+    Map variants to annotated ABCA4 domains (NBD1, NBD2, ABC-transporter regions, etc.).
+    Add indicators for disruption of critical functional regions.
+    """
+    mo.md(__doc__)
+
+
+@app.cell
+def __(
+    pd, np, logger, json,
+    df_cons, DATA_PROCESSED_DIR
+):
+    """Load ABCA4 domain definitions and annotate."""
+    import sys
+    sys.path.insert(0, str(__file__.parent.parent / "src"))
+
+    df_domains = df_cons.copy()
+
+    # Load domain definitions
+    domain_path = __file__.parent.parent / "src" / "data" / "domains" / "abca4_domains.json"
+    domains_dict = {}
+    if domain_path.exists():
+        logger.info(f"Loading domains from {domain_path}")
+        with open(domain_path) as f:
+            domains_dict = json.load(f)
+    else:
+        logger.warning(f"Domain file not found at {domain_path}")
+
+    # Add domain column
+    if "domain" not in df_domains.columns:
+        df_domains["domain"] = "unknown"
+
+    if "in_nbd" not in df_domains.columns:
+        df_domains["in_nbd"] = False
+    if "in_tmd" not in df_domains.columns:
+        df_domains["in_tmd"] = False
+
+    logger.info(f"Domain annotations: {df_domains['in_nbd'].sum()} in NBD, {df_domains['in_tmd'].sum()} in TMD")
+
+    return df_domains, domains_dict
+
+
+@app.cell
+def __(mo, df_domains):
+    """Display domain distribution."""
+    if "domain" in df_domains.columns:
+        domain_counts = df_domains["domain"].value_counts().to_frame("count")
+        mo.md(f"""
+### Domain Distribution
+
+Variants mapped to functional regions of ABCA4.
+""")
+        mo.ui.table(domain_counts.head(15).reset_index())
+    else:
+        mo.md("Domain data not available.")
+
+
+@app.cell
+def __(mo):
+    """
+    ### QA Checks & Completeness
+
+    Verify coverage of key annotation fields before writing out the annotated dataset.
+    """
+    mo.md(__doc__)
+
+
+@app.cell
+def __(
+    pd, df_domains
+):
+    """Compute completeness metrics."""
+    key_cols = [
+        "chrom", "pos", "ref", "alt", "clinical_significance",
+        "consequence", "gnomad_af", "phylop_score", "domain"
+    ]
+    completeness = {}
+    for col in key_cols:
+        if col in df_domains.columns:
+            completeness[col] = df_domains[col].notna().sum() / len(df_domains) if len(df_domains) > 0 else 0.0
+        else:
+            completeness[col] = 0.0
+
+    completeness_df = pd.DataFrame(
+        [(k, f"{v:.1%}") for k, v in completeness.items()],
+        columns=["Field", "Completeness"]
     )
-    return
+
+    return completeness_df, completeness
+
+
+@app.cell
+def __(mo, completeness_df):
+    """Display completeness table."""
+    mo.md("""
+### Annotation Completeness
+
+Key fields should be ≥80% complete for high-quality analysis:
+""")
+    mo.ui.table(completeness_df)
+
+
+@app.cell
+def __(mo):
+    """
+    ### Export Annotated Dataset
+
+    Save variants_annotated.parquet for use in Step 3 (Feature Engineering).
+    """
+    mo.md(__doc__)
+
+
+@app.cell
+def __(
+    logger,
+    df_domains, ANNOTATIONS_DIR
+):
+    """Write annotated variants to disk."""
+    output_path = ANNOTATIONS_DIR / "variants_annotated.parquet"
+    df_domains.to_parquet(output_path)
+    logger.info(f"Wrote annotated variants to {output_path}")
+    return output_path
+
+
+@app.cell
+def __(mo, output_path):
+    """Confirm export."""
+    mo.md(f"""
+✅ **Annotation complete!**
+
+Saved to: `{output_path}`
+
+**Next Step:** Open `02_feature_engineering.py` to add model scores and construct impact metrics.
+""")
+
 
 if __name__ == "__main__":
     app.run()

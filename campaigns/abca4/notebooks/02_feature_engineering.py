@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """
-ABCA4 Campaign - Feature Engineering Notebook
+ABCA4 Campaign – Feature Engineering & Scoring
 
-Interactive feature engineering for ABCA4 variants.
-Tune parameters, visualize distributions, and see correlations in real-time.
-
-Run with: marimo run notebooks/02_feature_engineering.py
-Edit with: marimo edit notebooks/02_feature_engineering.py
+Run interactively:  marimo edit notebooks/02_feature_engineering.py
+Run as dashboard:   marimo run notebooks/02_feature_engineering.py
+Run as script:      python notebooks/02_feature_engineering.py
 """
 
 import marimo
@@ -14,308 +12,612 @@ import marimo
 __generated_with = "0.17.8"
 app = marimo.App()
 
+
 @app.cell
 def __():
+    """Import core libraries."""
     import marimo as mo
     import pandas as pd
     import numpy as np
     from pathlib import Path
+    import logging
+    from typing import Optional, Dict, List, Tuple
     import sys
-    return mo, pd, np, Path, sys
+    import importlib
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
+
+    return mo, pd, np, Path, logging, logger, Optional, Dict, List, Tuple, sys, importlib
+
+
+@app.cell
+def __(mo, Path, logger, pd):
+    """Define campaign paths and load annotated dataset."""
+    CAMPAIGN_ROOT = Path(__file__).resolve().parents[0]
+    ANNOTATIONS_DIR = CAMPAIGN_ROOT / "data_processed" / "annotations"
+    FEATURES_DIR = CAMPAIGN_ROOT / "data_processed" / "features"
+    FEATURES_DIR.mkdir(parents=True, exist_ok=True)
+
+    annotated_path = ANNOTATIONS_DIR / "abca4_vus_annotated.parquet"
+    if not annotated_path.exists():
+        mo.md(f"⚠️ Missing annotated variants at {annotated_path}. Run 01_data_exploration.py first.")
+        df_annotated = pd.DataFrame()
+    else:
+        df_annotated = pd.read_parquet(annotated_path)
+        logger.info(f"Loaded {len(df_annotated)} annotated variants")
+
+    return CAMPAIGN_ROOT, ANNOTATIONS_DIR, FEATURES_DIR, annotated_path, df_annotated
+
 
 @app.cell
 def __(mo):
-    mo.md("# 🔧 ABCA4 Feature Engineering")
-    mo.md("""
-This notebook provides interactive feature engineering for ABCA4 variants.
-Tune parameters, visualize feature distributions, and explore correlations in real-time.
-""")
-    return
+    """
+    ## Step 3: Main Model Scoring
 
-@app.cell
-def __(pd, np):
-    def load_variant_data():
-        """Load base variant data"""
-        # In real implementation, load from data_processed/
-        variants_df = pd.DataFrame({
-            'variant_id': range(1000),
-            'chrom': ['1'] * 1000,
-            'pos': np.random.randint(94400000, 95200000, 1000),
-            'ref': np.random.choice(['A', 'C', 'G', 'T'], 1000),
-            'alt': np.random.choice(['A', 'C', 'G', 'T'], 1000),
-            'gnomad_af': np.random.exponential(0.001, 1000),
-            'clinvar_significance': np.random.choice(['Pathogenic', 'Uncertain', 'Benign'], 1000)
-        })
-        return variants_df
-    
-    variants_df = load_variant_data()
-    return variants_df,
+    Load AlphaMissense scores, SpliceAI predictions, and construct LoF priors.
+    """
+    mo.md(__doc__)
 
-@app.cell
-def __(mo):
-    mo.md("## 🎛️ Feature Computation Parameters")
-    
-    # Conservation features
-    phylop_weight = mo.ui.slider(0, 1, value=0.8, label="PhyloP Conservation Weight")
-    phastcons_weight = mo.ui.slider(0, 1, value=0.6, label="PhastCons Conservation Weight")
-    
-    # Functional prediction features
-    spliceai_threshold = mo.ui.slider(0, 1, value=0.1, label="SpliceAI Pathogenicity Threshold")
-    alphamissense_threshold = mo.ui.slider(0, 1, value=0.8, label="AlphaMissense Confidence Threshold")
-    
-    # Domain features
-    domain_penalty = mo.ui.slider(0, 5, value=2.0, label="Domain Disruption Penalty")
-    
-    return phylop_weight, phastcons_weight, spliceai_threshold, alphamissense_threshold, domain_penalty
 
 @app.cell
 def __(
-    variants_df, phylop_weight, phastcons_weight,
-    spliceai_threshold, alphamissense_threshold, domain_penalty, np
+    pd, np, logger,
+    df_annotated, CAMPAIGN_ROOT, ANNOTATIONS_DIR, FEATURES_DIR
 ):
-    """Compute features with interactive parameters"""
-    features_df = variants_df.copy()
-
-    # Conservation features (placeholder - in real impl, load from data)
-    features_df['phylop_score'] = np.random.normal(0, 1, len(features_df))
-    features_df['phastcons_score'] = np.random.normal(0, 1, len(features_df))
-    features_df['conservation_combined'] = (
-        phylop_weight.value * features_df['phylop_score'] +
-        phastcons_weight.value * features_df['phastcons_score']
-    )
-
-    # Functional prediction features (placeholder)
-    features_df['spliceai_score'] = np.random.beta(2, 8, len(features_df))
-    features_df['alphamissense_score'] = np.random.beta(8, 2, len(features_df))
-    features_df['spliceai_pathogenic'] = (features_df['spliceai_score'] > spliceai_threshold.value).astype(int)
-    features_df['alphamissense_pathogenic'] = (features_df['alphamissense_score'] > alphamissense_threshold.value).astype(int)
-
-    # Domain features (placeholder)
-    features_df['in_domain'] = np.random.choice([0, 1], len(features_df))
-    features_df['domain_penalty_score'] = features_df['in_domain'] * domain_penalty.value
-
-    # Combine into final feature matrix
-    feature_cols_computed = [
-        'conservation_combined',
-        'spliceai_score',
-        'alphamissense_score',
-        'spliceai_pathogenic',
-        'alphamissense_pathogenic',
-        'domain_penalty_score',
-        'gnomad_af'
-    ]
-
-    features_computed = features_df[feature_cols_computed + ['variant_id', 'clinvar_significance']]
-    return features_computed,
-
-@app.cell
-def __(mo):
-    mo.md("## 📊 Feature Distributions")
-    return
-
-@app.cell
-def __(features_computed):
-    """Interactive feature distribution plots"""
-    try:
-        import plotly.express as px_dist
-        from plotly.subplots import make_subplots
-        import plotly.graph_objects as go
-
-        numeric_features_list = ['conservation_combined', 'spliceai_score',
-                           'alphamissense_score', 'gnomad_af']
-
-        # Create subplot grid
-        fig = make_subplots(
-            rows=2, cols=2,
-            subplot_titles=numeric_features_list,
-            specs=[[{'type': 'histogram'}, {'type': 'histogram'}],
-                   [{'type': 'histogram'}, {'type': 'histogram'}]]
-        )
-
-        for i, feature in enumerate(numeric_features_list):
-            row = i // 2 + 1
-            col = i % 2 + 1
-
-            fig.add_trace(
-                go.Histogram(x=features_computed[feature], name=feature),
-                row=row, col=col
-            )
-
-        fig.update_layout(height=600, showlegend=False, title_text="Feature Distributions")
-        feature_plots_output = fig
-    except ImportError:
-        feature_plots_output = None
+    """
+    Load AlphaMissense, SpliceAI, conservation, and regulatory features
+    by calling the authoritative feature computation scripts.
+    """
+    sys.path.insert(0, str(CAMPAIGN_ROOT))
     
-    return feature_plots_output,
+    df_scored_step3 = df_annotated.copy()
 
-@app.cell
-def __(feature_plots_output, mo):
-    if feature_plots_output:
-        mo.ui.plot(feature_plots_output)
-    else:
-        mo.md("Install plotly to visualize feature distributions.")
-    return
+    feature_logs: List[Dict[str, object]] = []
 
-@app.cell
-def __(mo):
-    mo.md("## 🔗 Feature Correlations")
-    return
-
-@app.cell
-def __(features_computed):
-    """Interactive correlation analysis"""
-    try:
-        import plotly.express as px_corr
-
-        numeric_cols_corr = ['conservation_combined', 'spliceai_score',
-                       'alphamissense_score', 'gnomad_af']
-
-        corr_matrix_plot = features_computed[numeric_cols_corr].corr()
-
-        # Plotly heatmap
-        correlation_plot = px_corr.imshow(
-            corr_matrix_plot,
-            text_auto='.2f',
-            title='Feature Correlation Matrix',
-            color_continuous_scale='RdBu_r'
-        )
-    except ImportError:
-        correlation_plot = None
+    # Load features from each specialist script
+    feature_sources = []
     
-    return correlation_plot,
-
-@app.cell
-def __(correlation_plot, mo):
-    if correlation_plot:
-        mo.ui.plot(correlation_plot)
-    else:
-        mo.md("Install plotly to visualize correlations.")
-    return
-
-@app.cell
-def __(mo):
-    mo.md("## 🎯 Feature Importance Analysis")
-    return
-
-@app.cell
-def __(features_computed, pd):
-    """Analyze feature relationships with clinical significance"""
+    # 1. Load or compute missense features (AlphaMissense + ESM)
     try:
-        from sklearn.ensemble import RandomForestClassifier
-        from sklearn.preprocessing import LabelEncoder
-        
-        # Prepare data
-        feature_cols_imp = ['conservation_combined', 'spliceai_score',
-                       'alphamissense_score', 'gnomad_af', 'domain_penalty_score']
-
-        X = features_computed[feature_cols_imp]
-        y = LabelEncoder().fit_transform(features_computed['clinvar_significance'])
-
-        # Train simple model
-        rf = RandomForestClassifier(n_estimators=50, random_state=42)
-        rf.fit(X, y)
-
-        # Feature importance
-        importance_df = pd.DataFrame({
-            'feature': feature_cols_imp,
-            'importance': rf.feature_importances_
-        }).sort_values('importance', ascending=False)
-    except ImportError:
-        importance_df = pd.DataFrame({'feature': [], 'importance': []})
-    
-    return importance_df,
-
-@app.cell
-def __(importance_df):
-    """Plot feature importance"""
-    try:
-        import plotly.express as px
-
-        if not importance_df.empty:
-            importance_plot = px.bar(
-                importance_df,
-                x='importance',
-                y='feature',
-                orientation='h',
-                title='Feature Importance for Clinical Significance Prediction'
-            )
+        from src.features.missense import MissenseFeatureComputer
+        missense_path = FEATURES_DIR / "missense_features.parquet"
+        status = "cache"
+        if missense_path.exists():
+            logger.info(f"Loading cached missense features from {missense_path}")
+            df_missense = pd.read_parquet(missense_path)
         else:
-            importance_plot = None
-    except ImportError:
-        importance_plot = None
+            logger.info("Computing missense features via AlphaMissense...")
+            computer = MissenseFeatureComputer(input_dir=ANNOTATIONS_DIR, output_dir=FEATURES_DIR)
+            if computer.run():
+                df_missense = pd.read_parquet(missense_path)
+                status = "computed"
+            else:
+                logger.warning("Missense feature computation failed; using fallback")
+                df_missense = pd.DataFrame()
+                status = "fallback"
+        feature_sources.append((df_missense, 'variant_id'))
+        feature_logs.append({"feature": "missense", "status": status, "rows": len(df_missense)})
+    except Exception as e:
+        logger.error(f"Failed to load missense features: {e}")
     
-    return importance_plot,
-
-@app.cell
-def __(importance_plot, mo):
-    if importance_plot:
-        mo.ui.plot(importance_plot)
-    else:
-        mo.md("Install scikit-learn and plotly to see feature importance analysis.")
-    return
-
-@app.cell
-def __(mo):
-    mo.md("## ✅ Data Quality Checks")
-    return
-
-@app.cell
-def __(features_computed, np):
-    """Run data quality checks"""
-    checks_dict = {
-        'Total Variants': len(features_computed),
-        'Missing Values': features_computed.isnull().sum().sum(),
-        'Infinite Values': int(np.isinf(features_computed.select_dtypes(include=[np.number])).sum().sum()),
-        'Feature Range Check': 'All features in reasonable ranges',
+    # 2. Load or compute splice features (SpliceAI)
+    try:
+        from src.features.splice import SpliceFeatureComputer
+        splice_path = FEATURES_DIR / "splice_features.parquet"
+        status = "cache"
+        if splice_path.exists():
+            logger.info(f"Loading cached splice features from {splice_path}")
+            df_splice = pd.read_parquet(splice_path)
+        else:
+            logger.info("Computing splice features via SpliceAI...")
+            computer = SpliceFeatureComputer(input_dir=ANNOTATIONS_DIR, output_dir=FEATURES_DIR)
+            if computer.run():
+                df_splice = pd.read_parquet(splice_path)
+                status = "computed"
+            else:
+                logger.warning("Splice feature computation failed; using fallback")
+                df_splice = pd.DataFrame()
+                status = "fallback"
+        feature_sources.append((df_splice, 'variant_id'))
+        feature_logs.append({"feature": "splice", "status": status, "rows": len(df_splice)})
+    except Exception as e:
+        logger.error(f"Failed to load splice features: {e}")
+    
+    # 3. Load or compute conservation features (phyloP/phastCons)
+    try:
+        from src.features.conservation import ConservationFeatureComputer
+        cons_path = FEATURES_DIR / "conservation_features.parquet"
+        status = "cache"
+        if cons_path.exists():
+            logger.info(f"Loading cached conservation features from {cons_path}")
+            df_cons = pd.read_parquet(cons_path)
+        else:
+            logger.info("Computing conservation features via UCSC...")
+            computer = ConservationFeatureComputer(annotations_dir=ANNOTATIONS_DIR, output_dir=FEATURES_DIR)
+            if computer.run():
+                df_cons = pd.read_parquet(cons_path)
+                status = "computed"
+            else:
+                logger.warning("Conservation feature computation failed; using fallback")
+                df_cons = pd.DataFrame()
+                status = "fallback"
+        feature_sources.append((df_cons, 'variant_id'))
+        feature_logs.append({"feature": "conservation", "status": status, "rows": len(df_cons)})
+    except Exception as e:
+        logger.error(f"Failed to load conservation features: {e}")
+    
+    # 4. Load or compute regulatory features (domains + gnomAD)
+    try:
+        from src.features.regulatory import RegulatoryFeatureComputer
+        reg_path = FEATURES_DIR / "regulatory_features.parquet"
+        status = "cache"
+        if reg_path.exists():
+            logger.info(f"Loading cached regulatory features from {reg_path}")
+            df_reg = pd.read_parquet(reg_path)
+        else:
+            logger.info("Computing regulatory features (domains + gnomAD)...")
+            computer = RegulatoryFeatureComputer(annotations_dir=ANNOTATIONS_DIR, output_dir=FEATURES_DIR)
+            if computer.run():
+                df_reg = pd.read_parquet(reg_path)
+                status = "computed"
+            else:
+                logger.warning("Regulatory feature computation failed; using fallback")
+                df_reg = pd.DataFrame()
+                status = "fallback"
+        feature_sources.append((df_reg, 'variant_id'))
+        feature_logs.append({"feature": "regulatory", "status": status, "rows": len(df_reg)})
+    except Exception as e:
+        logger.error(f"Failed to load regulatory features: {e}")
+    
+    # Join all feature sources
+    for df_features, join_key in feature_sources:
+        if not df_features.empty and join_key in df_features.columns:
+            df_scored_step3 = df_scored_step3.merge(df_features, on=join_key, how='left', suffixes=('', '_feature'))
+    
+    # Add LoF prior based on consequence
+    _consequence_lof = {
+        "frameshift_variant": 0.95,
+        "stop_gained": 0.95,
+        "splice_acceptor_variant": 0.95,
+        "splice_donor_variant": 0.95,
+        "missense_variant": 0.1,
+        "synonymous_variant": 0.01,
     }
 
-    # Check for high correlations
-    numeric_features_qc = features_computed.select_dtypes(include=[np.number])
-    if not numeric_features_qc.empty:
-        corr_matrix_qc = numeric_features_qc.corr()
-        high_corr = int(((corr_matrix_qc > 0.95) & (corr_matrix_qc < 1.0)).sum().sum() // 2)
-        checks_dict['High Correlations (>0.95)'] = high_corr
+    if "lof_prior" not in df_scored_step3.columns:
+        consequence_col = next((c for c in df_scored_step3.columns if 'consequence' in c.lower()), 'vep_consequence')
+        df_scored_step3["lof_prior"] = df_scored_step3.get(consequence_col, "missense_variant").apply(
+            lambda x: _consequence_lof.get(str(x).lower() if pd.notna(x) else "missense_variant", 0.1)
+        )
 
-    return checks_dict,
+    logger.info(f"Loaded all features. {len(df_scored_step3)} variants with {len(df_scored_step3.columns)} total columns.")
+    df_scored_step3.attrs['feature_logs'] = feature_logs
+
+    return df_scored_step3
+
 
 @app.cell
-def __(checks_dict, mo):
-    mo.ui.table(checks_dict)
-    return
+def __(
+    pd, df_scored_step3, logger, FEATURES_DIR
+):
+    """Save intermediate features."""
+    _features_raw_path = FEATURES_DIR / "variants_features_raw.parquet"
+    df_scored_step3.to_parquet(_features_raw_path)
+    logger.info(f"Wrote raw features to {_features_raw_path}")
+    return _features_raw_path
+
+
+@app.cell
+def __(mo, pd, df_scored_step3):
+    """Summarize feature-source status (cache vs computed)."""
+    logs = df_scored_step3.attrs.get('feature_logs', [])
+    if not logs:
+        mo.md("No feature status metadata available.")
+        table = pd.DataFrame()
+    else:
+        table = pd.DataFrame(logs)
+    mo.md("### Feature Source Status")
+    mo.ui.table(table)
+
 
 @app.cell
 def __(mo):
-    mo.md("## 💾 Export Features")
-    
-    export_path = mo.ui.text(
-        value="data_processed/features/abca4_features.parquet",
-        label="Export Path"
+    """
+    ## Step 4: Impact Score Construction
+
+    Choose between two modes: hand-mix or logistic regression.
+    """
+    mo.md(__doc__)
+
+    scoring_mode_widget = mo.ui.radio(
+        options=["hand-mix", "logistic"],
+        value="hand-mix",
+        label="Scoring Mode"
     )
-    
-    return export_path,
+
+    return scoring_mode_widget
+
 
 @app.cell
-def __(export_path, mo):
-    mo.md(f"""
-Export features to: `{export_path.value}`
+def __(mo, scoring_mode_widget):
+    """Guidance on when to switch modes."""
+    if scoring_mode_widget.value == "hand-mix":
+        mo.md("Hand-mix is ideal for first-pass sanity checks. Dial the weights until pathogenic vs benign distributions behave, then flip to logistic when you're ready for a fixed model.")
+    else:
+        mo.md("Logistic mode trains a calibrated score using current ClinVar labels. Re-run hand-mix if you want to experiment before retraining.")
 
-To actually export, you would click a button (currently disabled for safety).
-""")
-    return
 
 @app.cell
 def __(mo):
+    """Document the v1 decision on impact scoring."""
     mo.md("""
-## 🎯 Next Steps
-
-1. **Model Training**: Use these features for Strand optimization
-2. **Hyperparameter Tuning**: Adjust reward weights based on feature importance
-3. **Cross-validation**: Evaluate feature stability across different data splits
-4. **Feature Selection**: Remove redundant features based on correlation analysis
-
-Use the interactive controls above to optimize your feature engineering pipeline!
+> **v1 decision:** ship the ABCA4 pipeline with the hand-mix weights above. Logistic regression remains available for v1.1 once we collect more curated LP/B labels. Anytime we regenerate `variants_scored.parquet` for v1 we should keep the radio on *hand-mix* so downstream notebooks stay deterministic.
 """)
-    return
+
+
+@app.cell
+def __(mo, scoring_mode_widget):
+    """Create hand-mix weight sliders."""
+    if scoring_mode_widget.value == "hand-mix":
+        alpha_wgt = mo.ui.slider(0, 1, value=0.4, step=0.05, label="AlphaMissense Weight")
+        splice_wgt = mo.ui.slider(0, 1, value=0.3, step=0.05, label="SpliceAI Weight")
+        cons_wgt = mo.ui.slider(0, 1, value=0.15, step=0.05, label="Conservation Weight")
+        lof_wgt = mo.ui.slider(0, 1, value=0.15, step=0.05, label="LoF Prior Weight")
+    else:
+        alpha_wgt = None
+        splice_wgt = None
+        cons_wgt = None
+        lof_wgt = None
+
+    return alpha_wgt, splice_wgt, cons_wgt, lof_wgt
+
+
+@app.cell
+def __(scoring_mode_widget, df_scored_step3, logger, pd, np):
+    """
+    Train logistic regression model on ClinVar labels (LP/P vs B/LB).
+    """
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.preprocessing import StandardScaler
+
+    logistic_model = None
+    logistic_scaler = None
+
+    if scoring_mode_widget.value == "logistic":
+        try:
+            # Extract features and labels
+            train_feature_cols = [c for c in df_scored_step3.columns if any(
+                x in c.lower() for x in ['alphamissense', 'spliceai', 'phylop', 'conservation', 'lof_prior']
+            )]
+
+            if not train_feature_cols:
+                raise ValueError("No feature columns available for logistic regression")
+
+            # Define labels: Pathogenic/Likely Pathogenic vs Benign/Likely Benign
+            def _is_pathogenic(sig):
+                if not isinstance(sig, str):
+                    return 0
+                sig_lower = sig.lower()
+                return 1 if ('pathogenic' in sig_lower and 'benign' not in sig_lower) else 0
+
+            clinsig_col = next((c for c in df_scored_step3.columns if 'clinical_significance' in c.lower()), None)
+            if clinsig_col:
+                y = df_scored_step3[clinsig_col].apply(_is_pathogenic).values
+            else:
+                y = np.zeros(len(df_scored_step3))
+
+            # Prepare data
+            X_train = df_scored_step3[train_feature_cols].fillna(0.0).values
+            logistic_scaler = StandardScaler()
+            X_train_scaled = logistic_scaler.fit_transform(X_train)
+
+            # Train logistic regression
+            logistic_model = LogisticRegression(random_state=42, max_iter=1000)
+            logistic_model.fit(X_train_scaled, y)
+
+            logger.info(f"Trained logistic regression with {len(train_feature_cols)} features")
+            logger.info(f"Model accuracy: {logistic_model.score(X_train_scaled, y):.3f}")
+
+            # Display coefficients
+            coef_display = pd.DataFrame({
+                'Feature': train_feature_cols,
+                'Coefficient': logistic_model.coef_[0],
+                'Abs_Coeff': np.abs(logistic_model.coef_[0])
+            }).sort_values('Abs_Coeff', ascending=False)
+
+            logger.info("\nTop features by logistic regression coefficient:")
+            logger.info(coef_display.head(10).to_string())
+
+        except Exception as e:
+            logger.error(f"Logistic regression training failed: {e}")
+            logistic_model = None
+            logistic_scaler = None
+
+    return logistic_model, logistic_scaler
+
+
+@app.cell
+def __(
+    pd, np, logger,
+    df_scored_step3, scoring_mode_widget,
+    alpha_wgt, splice_wgt, cons_wgt, lof_wgt,
+    logistic_model, logistic_scaler
+):
+    """Compute impact scores using hand-mix or logistic regression."""
+    
+    df_impact = df_scored_step3.copy()
+
+    if scoring_mode_widget.value == "hand-mix" and alpha_wgt is not None:
+        # Normalize scores to [0, 1]
+        def _normalize_score(col):
+            if col not in df_impact.columns or df_impact[col].notna().sum() == 0:
+                return np.zeros(len(df_impact))
+            s = df_impact[col].fillna(0.0)
+            s_min, s_max = s.min(), s.max()
+            if s_max > s_min:
+                return (s - s_min) / (s_max - s_min)
+            else:
+                return np.zeros(len(s))
+
+        _alpha_norm = _normalize_score("alphamissense_score")
+        _splice_norm = _normalize_score("spliceai_max_score")
+        _cons_norm = _normalize_score("phylop_score")
+        _lof_norm = df_impact["lof_prior"].fillna(0.0)
+
+        _total_wgt = (
+            alpha_wgt.value + splice_wgt.value +
+            cons_wgt.value + lof_wgt.value
+        )
+        if _total_wgt == 0:
+            _total_wgt = 1.0
+
+        df_impact["model_score"] = (
+            (alpha_wgt.value * _alpha_norm +
+             splice_wgt.value * _splice_norm +
+             cons_wgt.value * _cons_norm +
+             lof_wgt.value * _lof_norm) / _total_wgt
+        )
+
+        logger.info(f"Computed hand-mix impact scores.")
+
+    elif logistic_model is not None and logistic_scaler is not None:
+        # Use trained logistic regression model
+        try:
+            # Extract same features used in training
+            predict_feature_cols = [c for c in df_impact.columns if any(
+                x in c.lower() for x in ['alphamissense', 'spliceai', 'phylop', 'conservation', 'lof_prior']
+            )]
+
+            X_predict = df_impact[predict_feature_cols].fillna(0.0).values
+            X_predict_scaled = logistic_scaler.transform(X_predict)
+            
+            # Get probability of pathogenic
+            proba = logistic_model.predict_proba(X_predict_scaled)
+            df_impact["model_score"] = proba[:, 1]  # Probability of pathogenic (class 1)
+            
+            logger.info(f"Computed logistic regression impact scores. Mean: {df_impact['model_score'].mean():.3f}")
+        except Exception as e:
+            logger.error(f"Logistic regression scoring failed: {e}; using uniform fallback")
+            df_impact["model_score"] = np.random.uniform(0, 1, len(df_impact))
+    else:
+        # Fallback: uniform random
+        df_impact["model_score"] = np.random.uniform(0, 1, len(df_impact))
+        logger.info("Using uniform random fallback for impact scores")
+
+    return df_impact
+
+
+@app.cell
+def __():
+    """Import plotly for visualizations."""
+    import plotly.graph_objects as go
+    return go
+
+
+@app.cell
+def __(mo, go, df_impact):
+    """Visualize impact score distribution with plotly."""
+    if "model_score" in df_impact.columns and not df_impact.empty:
+        try:
+            _fig_score = go.Figure()
+            _fig_score.add_trace(go.Histogram(
+                x=df_impact["model_score"].dropna(),
+                nbinsx=30,
+                name="Impact Score",
+                marker_color="rgba(99, 110, 250, 0.7)"
+            ))
+            _fig_score.update_layout(
+                title="Impact Score Distribution",
+                xaxis_title="Impact Score",
+                yaxis_title="Frequency",
+                hovermode="x unified",
+                showlegend=False,
+                template="plotly_white"
+            )
+            mo.ui.plotly(_fig_score)
+        except Exception as _e:
+            mo.md(f"Visualization error: {_e}")
+    else:
+        mo.md("Impact scores not available.")
+
+
+@app.cell
+def __(mo):
+    """
+    ## Step 5: Clustering & Coverage Targets
+
+    Define clusters and compute coverage thresholds.
+    """
+    mo.md(__doc__)
+
+    clustering_widget = mo.ui.radio(
+        options=["domain", "consequence", "manual"],
+        value="domain",
+        label="Clustering Strategy"
+    )
+
+    return clustering_widget
+
+
+@app.cell
+def __(
+    pd, np, logger,
+    df_impact, clustering_widget
+):
+    """Assign cluster membership."""
+    df_clusters = df_impact.copy()
+
+    if clustering_widget.value == "domain":
+        if "domain" in df_clusters.columns:
+            df_clusters["cluster"] = df_clusters["domain"].fillna("unknown")
+        else:
+            df_clusters["cluster"] = "unknown"
+        logger.info(f"Domain-based clustering: {df_clusters['cluster'].nunique()} clusters")
+
+    elif clustering_widget.value == "consequence":
+        if "consequence" in df_clusters.columns:
+            df_clusters["cluster"] = df_clusters["consequence"].fillna("unknown")
+        else:
+            df_clusters["cluster"] = "unknown"
+        logger.info(f"Consequence-based clustering: {df_clusters['cluster'].nunique()} clusters")
+
+    else:
+        df_clusters["cluster"] = df_clusters.get("domain", "unknown").fillna("unknown")
+
+    return df_clusters
+
+
+@app.cell
+def __(mo, df_clusters):
+    """Display cluster membership."""
+    if "cluster" in df_clusters.columns and not df_clusters.empty:
+        _cluster_counts = df_clusters["cluster"].value_counts().to_frame("count")
+        mo.md(f"""
+### Cluster Membership
+
+**Total clusters:** {df_clusters['cluster'].nunique()}
+""")
+        mo.ui.table(_cluster_counts.reset_index())
+
+
+@app.cell
+def __(
+    pd, logger,
+    df_clusters
+):
+    """Compute cluster coverage targets."""
+    _cluster_targets = {}
+
+    for _cluster_name, _group in df_clusters.groupby("cluster"):
+        # Count pathogenic variants
+        if "clinical_significance" in _group.columns:
+            def _is_pathogenic(sig):
+                return "pathogenic" in str(sig).lower() and "benign" not in str(sig).lower()
+            _n_pathogenic = _group["clinical_significance"].apply(_is_pathogenic).sum()
+        else:
+            _n_pathogenic = 0
+
+        _n_total = len(_group)
+        _max_score = _group.get("model_score", pd.Series([0.0])).max()
+
+        _cluster_targets[_cluster_name] = {
+            "n_variants": _n_total,
+            "n_pathogenic": _n_pathogenic,
+            "max_score": _max_score,
+            "tau_j": _max_score * 0.8,
+        }
+
+    logger.info(f"Computed coverage targets for {len(_cluster_targets)} clusters")
+
+    return _cluster_targets
+
+
+@app.cell
+def __(mo, pd, df_clusters):
+    """Display cluster targets."""
+    _cluster_targets_display = {}
+
+    for _cluster_name, _group in df_clusters.groupby("cluster"):
+        if "clinical_significance" in _group.columns:
+            def _is_path(sig):
+                return "pathogenic" in str(sig).lower() and "benign" not in str(sig).lower()
+            _n_path = _group["clinical_significance"].apply(_is_path).sum()
+        else:
+            _n_path = 0
+
+        _n_tot = len(_group)
+        _max_sc = _group.get("model_score", pd.Series([0.0])).max()
+
+        _cluster_targets_display[_cluster_name] = {
+            "n_variants": _n_tot,
+            "n_pathogenic": _n_path,
+            "max_score": _max_sc,
+            "tau_j": _max_sc * 0.8,
+        }
+
+    _targets_df = pd.DataFrame([
+        {
+            "Cluster": k,
+            "Variants": v["n_variants"],
+            "Pathogenic": v["n_pathogenic"],
+            "Max Score": f"{v['max_score']:.3f}",
+            "Target τⱼ": f"{v['tau_j']:.3f}",
+        }
+        for k, v in _cluster_targets_display.items()
+    ])
+    mo.md("### Coverage Targets per Cluster")
+    mo.ui.table(_targets_df)
+
+
+@app.cell
+def __(
+    pd, df_clusters
+):
+    """Add cluster info and finalize."""
+    df_final_scored = df_clusters.copy()
+
+    # Compute cluster targets inline
+    _cluster_tgt_dict = {}
+    for _cn, _cg in df_clusters.groupby("cluster"):
+        _mx = _cg.get("model_score", pd.Series([0.0])).max()
+        _cluster_tgt_dict[_cn] = _mx * 0.8
+
+    df_final_scored["cluster_target"] = df_final_scored["cluster"].map(
+        lambda c: _cluster_tgt_dict.get(c, 0.5)
+    )
+    return df_final_scored
+
+
+@app.cell
+def __(
+    logger, df_final_scored, FEATURES_DIR
+):
+    """Save final scored and clustered variants."""
+    _final_path = FEATURES_DIR / "variants_scored.parquet"
+    df_final_scored.to_parquet(_final_path)
+    logger.info(f"Wrote scored & clustered variants to {_final_path}")
+    return _final_path
+
+
+@app.cell
+def __(mo, logger, df_final_scored, FEATURES_DIR):
+    """Confirm completion and save."""
+    _final_path_confirm = FEATURES_DIR / "variants_scored.parquet"
+    df_final_scored.to_parquet(_final_path_confirm)
+    logger.info(f"Wrote scored & clustered variants")
+    
+    mo.md(f"""
+✅ **Feature Engineering Complete!**
+
+Saved to: `{_final_path_confirm}`
+
+**Next Step:** Open `03_optimization_dashboard.py` for Strand optimization.
+""")
+
 
 if __name__ == "__main__":
     app.run()

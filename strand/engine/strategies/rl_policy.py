@@ -138,7 +138,8 @@ class RLPolicyStrategy(Strategy):
         if not items:
             return
         self._runtime = context.runtime or self._runtime
-        if context.runtime and not self._adapter:\n            self._adapter = StrategyRuntimeAdapter(context.runtime)
+        if context.runtime and not self._adapter:
+            self._adapter = StrategyRuntimeAdapter(context.runtime)
         self._ensure_head_ready()
         if self._policy_head_instance is None or self._optimizer is None:
             return

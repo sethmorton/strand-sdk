@@ -14,14 +14,21 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import numpy as np
-import torch
-import torch.nn as nn
 
 from strand.core.sequence import Sequence
-from strand.rewards.base import RewardBlock
+from strand.rewards.base import (
+    BaseRewardBlock,
+    BlockType,
+    RewardBlockMetadata,
+    RewardContext,
+)
+
+if TYPE_CHECKING:  # pragma: no cover
+    import torch
+    import torch.nn as nn
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -83,7 +90,7 @@ class EnformerConfig:
             raise ValueError("Weighted aggregation requires cell_type_weights")
 
 
-class EnformerRewardBlock(RewardBlock):
+class EnformerRewardBlock(BaseRewardBlock):
     """Enformer-based reward block for regulatory activity prediction.
 
     Scores sequences based on predicted cell-type-specific gene expression,
@@ -102,7 +109,7 @@ class EnformerRewardBlock(RewardBlock):
     >>> print(scores)  # {"enformer_activity": [...]}
     """
 
-    def __init__(self, config: EnformerConfig) -> None:
+    def __init__(self, config: EnformerConfig, *, weight: float = 1.0) -> None:
         """Initialize Enformer reward block.
 
         Parameters
@@ -115,12 +122,17 @@ class EnformerRewardBlock(RewardBlock):
         FileNotFoundError
             If model checkpoint not found.
         """
-        super().__init__()
+        metadata = RewardBlockMetadata(
+            block_type=BlockType.ADVANCED,
+            description="Enformer-based regulatory activity block",
+            requires_context=False,
+        )
+        super().__init__(name="enformer", weight=weight, metadata=metadata)
         self.config = config
         self.model = self._load_model()
         self._init_normalization_stats()
 
-    def _load_model(self) -> nn.Module:
+    def _load_model(self) -> "nn.Module":
         """Load Enformer model from checkpoint.
 
         Returns
@@ -158,18 +170,19 @@ class EnformerRewardBlock(RewardBlock):
             ONNX session wrapper.
         """
         try:
-            import onnxruntime as ort
-        except ImportError:
-            raise ImportError(
+            import onnxruntime as ort  # type: ignore[import]
+        except ImportError as exc:  # pragma: no cover - optional dependency
+            msg = (
                 "onnxruntime required for ONNX models. "
                 "Install with: pip install onnxruntime"
             )
+            raise ImportError(msg) from exc
 
         session = ort.InferenceSession(str(model_path))
         _LOGGER.info(f"Loaded ONNX Enformer model from {model_path}")
         return session
 
-    def _load_pytorch_model(self, model_path: Path) -> nn.Module:
+    def _load_pytorch_model(self, model_path: Path) -> "nn.Module":
         """Load PyTorch Enformer model.
 
         Parameters
@@ -182,10 +195,12 @@ class EnformerRewardBlock(RewardBlock):
         nn.Module
             Enformer model.
         """
+        import torch
+
         try:
             import enformer_pytorch  # type: ignore[import]
             model = enformer_pytorch.Enformer.from_pretrained("enformer-base")
-        except ImportError:
+        except ImportError:  # pragma: no cover - optional dependency
             # Fallback: create stub for testing
             _LOGGER.warning(
                 "enformer_pytorch not installed. Using stub model. "
@@ -204,7 +219,7 @@ class EnformerRewardBlock(RewardBlock):
         _LOGGER.info(f"Loaded PyTorch Enformer model from {model_path}")
         return model
 
-    def _create_stub_model(self) -> nn.Module:
+    def _create_stub_model(self) -> "nn.Module":
         """Create stub Enformer model for testing.
 
         Returns
@@ -213,12 +228,15 @@ class EnformerRewardBlock(RewardBlock):
             Dummy model that returns random predictions.
         """
 
+        import torch
+        import torch.nn as nn
+
         class StubEnformer(nn.Module):
             def __init__(self, num_cell_types: int = 5):
                 super().__init__()
                 self.num_cell_types = num_cell_types
 
-            def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+            def forward(self, x: "torch.Tensor") -> dict[str, "torch.Tensor"]:
                 # x: (batch_size, seq_len, 4) one-hot encoded sequences
                 batch_size = x.shape[1]  # Enformer typically processes features
                 # Return random predictions for each cell type
@@ -257,6 +275,8 @@ class EnformerRewardBlock(RewardBlock):
         encoded = self._encode_sequences(sequences)
 
         # Run inference
+        import torch
+
         with torch.no_grad():
             predictions = self._predict(encoded)
 
@@ -278,7 +298,7 @@ class EnformerRewardBlock(RewardBlock):
 
         return result
 
-    def _encode_sequences(self, sequences: list[Sequence]) -> torch.Tensor:
+    def _encode_sequences(self, sequences: list[Sequence]) -> "torch.Tensor":
         """One-hot encode sequences for Enformer.
 
         Parameters
@@ -306,9 +326,11 @@ class EnformerRewardBlock(RewardBlock):
                     idx = alphabet.get(token, 0)
                     encoded[i, j, idx] = 1.0
 
+        import torch
+
         return torch.from_numpy(encoded).to(self.config.device)
 
-    def _predict(self, encoded: torch.Tensor) -> np.ndarray:
+    def _predict(self, encoded: "torch.Tensor") -> np.ndarray:
         """Run Enformer inference.
 
         Parameters
@@ -321,6 +343,9 @@ class EnformerRewardBlock(RewardBlock):
         np.ndarray
             Model predictions of shape (batch_size, num_cell_types).
         """
+        import torch
+        import torch.nn as nn
+
         if isinstance(self.model, nn.Module):
             # PyTorch inference
             output = self.model(encoded)
@@ -336,9 +361,10 @@ class EnformerRewardBlock(RewardBlock):
             return predictions.cpu().numpy()
         else:
             # ONNX inference
-            input_name = self.model.get_inputs()[0].name
-            output_name = self.model.get_outputs()[0].name
-            predictions = self.model.run([output_name], {input_name: encoded.cpu().numpy()})
+            session = self.model
+            input_name = session.get_inputs()[0].name
+            output_name = session.get_outputs()[0].name
+            predictions = session.run([output_name], {input_name: encoded.cpu().numpy()})
             return predictions[0]
 
     def _aggregate_predictions(self, predictions: np.ndarray) -> np.ndarray:
@@ -406,9 +432,13 @@ class EnformerRewardBlock(RewardBlock):
         else:
             return scores
 
+    def _score(self, sequence: Sequence, context: RewardContext) -> float:  # noqa: ARG002
+        """Scalar objective used by RewardAggregator."""
+        result = self([sequence])
+        return float(result.get("enformer_activity", 0.0))
+
 
 __all__ = [
     "EnformerConfig",
     "EnformerRewardBlock",
 ]
-

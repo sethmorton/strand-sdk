@@ -13,8 +13,7 @@ from typing import TYPE_CHECKING
 from strand.core.sequence import Sequence
 from strand.engine.interfaces import Evaluator
 from strand.engine.types import Metrics
-from strand.rewards import RewardBlock
-from strand.rewards.base import RewardContext
+from strand.rewards.base import RewardBlockProtocol, RewardContext
 
 if TYPE_CHECKING:
     from strand.engine.types import SequenceContext
@@ -24,7 +23,7 @@ if TYPE_CHECKING:
 class RewardAggregator(Evaluator):
     """Batch evaluator over a list of reward blocks."""
 
-    reward_blocks: ABCSequence[RewardBlock]
+    reward_blocks: ABCSequence[RewardBlockProtocol]
 
     def evaluate_batch(self, seqs: list[Sequence]) -> list[Metrics]:
         """Return metrics with the weighted sum objective for each sequence."""

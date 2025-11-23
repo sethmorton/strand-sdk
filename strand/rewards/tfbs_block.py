@@ -15,7 +15,7 @@ from typing import Optional
 import numpy as np
 
 from strand.core.sequence import Sequence
-from strand.rewards.base import RewardBlock
+from strand.rewards.base import BaseRewardBlock, BlockType, RewardBlockMetadata, RewardContext
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,8 +48,14 @@ class TFBSConfig:
     aggregation: str = "correlation"
     return_constraint_channel: bool = True
 
+    def __post_init__(self) -> None:
+        valid = {"correlation", "frequency", "weighted"}
+        if self.aggregation not in valid:
+            msg = f"Invalid aggregation: {self.aggregation}"
+            raise ValueError(msg)
 
-class TFBSFrequencyCorrelationBlock(RewardBlock):
+
+class TFBSFrequencyCorrelationBlock(BaseRewardBlock):
     """Score sequences based on TFBS frequency matching.
 
     Enables optimization toward target TFBS profiles, useful for promoter
@@ -65,7 +71,7 @@ class TFBSFrequencyCorrelationBlock(RewardBlock):
     >>> scores = block([Sequence(id="seq1", tokens="ACGTACGT")])
     """
 
-    def __init__(self, config: TFBSConfig) -> None:
+    def __init__(self, config: TFBSConfig, *, weight: float = 1.0) -> None:
         """Initialize TFBS reward block.
 
         Parameters
@@ -73,6 +79,12 @@ class TFBSFrequencyCorrelationBlock(RewardBlock):
         config : TFBSConfig
             Configuration specifying motifs and scoring method.
         """
+        metadata = RewardBlockMetadata(
+            block_type=BlockType.ADVANCED,
+            description="TFBS frequency correlation block",
+            requires_context=False,
+        )
+        super().__init__(name="tfbs", weight=weight, metadata=metadata)
         self.config = config
         self.motifs = self._load_motifs()
         self.pwm_scores_cache = {}
@@ -204,15 +216,38 @@ class TFBSFrequencyCorrelationBlock(RewardBlock):
         # Compute divergence (KL or L2)
         divergences = np.linalg.norm(frequencies - target, axis=1)
 
+        mean_corr = float(np.mean(correlations))
+        mean_freq = float(1.0 - np.mean(freq_diffs))  # Invert so higher is better
+
         result = {
-            "tfbs_correlation": float(np.mean(correlations)),
-            "tfbs_frequency": float(1.0 - np.mean(freq_diffs)),  # Invert so higher is better
+            "tfbs_correlation": mean_corr,
+            "tfbs_frequency": mean_freq,
         }
 
         if self.config.return_constraint_channel:
             result["tfbs_divergence"] = float(np.mean(divergences))
 
         return result
+
+    def _score(self, sequence: Sequence, context: RewardContext) -> float:  # noqa: ARG002
+        """Scalar objective used by RewardAggregator.
+
+        The aggregation mode controls which channel drives the objective:
+        - correlation: use tfbs_correlation
+        - frequency:  use tfbs_frequency
+        - weighted:   0.7 * correlation + 0.3 * frequency
+        """
+        result = self([sequence])
+
+        corr = float(result.get("tfbs_correlation", 0.0))
+        freq = float(result.get("tfbs_frequency", 0.0))
+
+        if self.config.aggregation == "correlation":
+            return corr
+        if self.config.aggregation == "frequency":
+            return freq
+        # weighted
+        return 0.7 * corr + 0.3 * freq
 
     def _compute_tfbs_frequency(self, seq: str) -> np.ndarray:
         """Compute TFBS frequencies in a sequence.
@@ -309,4 +344,3 @@ __all__ = [
     "TFBSConfig",
     "TFBSFrequencyCorrelationBlock",
 ]
-
